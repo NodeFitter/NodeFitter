@@ -33,8 +33,7 @@ Opennebula monitoring data include information about the hypervisor, therefore, 
 > - Edit `/etc/kubernetes/admin.conf` to substitute any reference to the old address with the new one.
 
 - VM template must have QEMU Guest Agent (under OS & CPU) set to yes
-- VM template must have SET_HOSTNAME as key and vm-$VMID as value under Context Custom Variables
-- VM template must have OneGate token (under context)
+- VM template must have OneGate token enabled (under context)
 - A script inside the vm (under `/bin`) that push the data with:
     ```onegate vm update --data 'TEST_KEY="test_value"```
 
@@ -111,5 +110,7 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
   ```sh
   eval $(cat /var/run/one_context/one_env | grep kubeadm) && eval $K8_JOIN_COMMAND
   ```
-
-If Alpine Linux is preferred, refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s
+  If Alpine Linux is preferred, refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s
+- VM template must have SET_HOSTNAME as key and vm-$VMID as value under Context Custom Variables;
+- VM has to be part of an OpenNebula VM group which name is the same as the various pods nodeselector regions;
+- Pods namespaces and labels must also match VM groups names. For labels, type is used as the key.

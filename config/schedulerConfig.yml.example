@@ -9,3 +9,4 @@ kubernetes_endpoint: https://192.0.2.1:6443
 free_ram_threshold: 100
 free_CPU_threshold: 9.5
 schedule_check_interval: 180 # How many seconds wait before scan the VMs and check wether new VMs are needed or need to be stopped. Must be a positive integer different from 0
+schedule_preserve_VM_timeout: 600 # How many seconds preserve a VM before it is considerate as a candidate to be removed from the scheduler

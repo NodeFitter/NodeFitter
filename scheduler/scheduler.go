@@ -37,11 +37,12 @@ var (
 )
 
 type Node struct {
-	Id           int
-	AvailableMem float64
-	AvailableCPU float32
-	VMGroupName  string
-	VMTemplateId int
+	Id                     int
+	AvailableMem           float64
+	AvailableCPU           float32
+	VMGroupName            string
+	VMTemplateId           int
+	InstantiationTimestamp time.Time
 }
 
 type Scheduler struct {
@@ -64,8 +65,9 @@ type Scheduler struct {
 	vms map[int]*Node
 
 	// Scheduler timer
-	ticker   *time.Ticker
-	interval int
+	ticker            *time.Ticker
+	interval          int
+	preserveVMTimeout int
 }
 
 func (s *Scheduler) UpdateMemoryThreshold(newThresholdInMb float64) error {
@@ -161,6 +163,8 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 
 	s.interval = ctx.SchedulerProcessInterval
 
+	s.preserveVMTimeout = ctx.PreserveVMTimeout
+
 	s.hasBeenStarted = true
 
 	s.StartScheduleProcess()
@@ -178,7 +182,7 @@ func (s *Scheduler) createKubernetesJoinToken() (string, error) {
 
 	// Set expiration date of token to 24h
 	expirationTime := time.Now().
-		Add(24 * time.Hour).
+		Add(10 * time.Minute).
 		UTC().
 		Format(time.RFC3339)
 
@@ -404,6 +408,7 @@ func (s *Scheduler) updateVmMap() error {
 		}
 
 		s.vms[ivm.ID].VMTemplateId = templateId
+		s.vms[ivm.ID].InstantiationTimestamp = time.Now()
 	}
 
 	return nil
@@ -468,7 +473,24 @@ func (s *Scheduler) checkAndSchedule() error {
 				continue
 			}
 
-			joinCmd := "kubeadm join " + s.k8Endpoint + " --token " + token + " --discovery-token-ca-cert-hash sha256:" + s.kubernetesCASHA
+			joinCmd := fmt.Sprintf(`
+cat > /tmp/worker-join.yaml <<'EOF' && kubeadm join --config /tmp/worker-join.yaml
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: %s
+    token: %s
+    caCertHashes:
+      - sha256:%s
+
+nodeRegistration:
+  kubeletExtraArgs:
+    - name: node-labels
+      value: type=%s
+EOF
+			`, s.k8Endpoint, token, s.kubernetesCASHA, vm.VMGroupName)
 
 			// Recover template context: it is necessary so it is possible to inject the kubeadm join command that later the vm could execute
 			templateInfo, err := tc.Info(true, true)
@@ -493,7 +515,11 @@ func (s *Scheduler) checkAndSchedule() error {
 			`
 
 			// Instantiate the vm with the new context
-			tc.Instantiate(uuid.New().String(), false, updatedContext, false)
+			newId, err := tc.Instantiate(uuid.New().String(), false, updatedContext, false)
+
+			if s.vms[newId] == nil {
+				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vm.VMGroupName, VMTemplateId: vm.VMTemplateId, InstantiationTimestamp: time.Now()}
+			}
 		}
 	}
 
@@ -507,6 +533,55 @@ func (s *Scheduler) checkAndUnschedule() error {
 
 	// Update vm map
 	s.updateVmMap()
+
+	// Recover all pods
+	podsMap := make(map[string]*corev1.PodList)
+
+	// Retrieve all pods running in the various VMs
+	// N.B.: assuming Nodes join the cluster with name vm-$VMID
+	// N.B.: assuming namespaces names and label "type" keys match OpenNebula VM groups names
+	for _, vm := range s.vms {
+
+		if time.Since(vm.InstantiationTimestamp) < time.Duration(s.preserveVMTimeout)*time.Second {
+			// Ignore the VM if it had been instantiated less than preserveVMTimeout seconds ago
+			continue
+		}
+
+		// Get all pods scheduled in the namespace to which the node is part of
+		pods := podsMap[vm.VMGroupName]
+
+		if pods == nil {
+			pods, err := s.k8Client.CoreV1().Pods(vm.VMGroupName).List(
+				sysContext.TODO(),
+				metav1.ListOptions{},
+			)
+
+			if err != nil {
+				continue
+			}
+
+			podsMap[vm.VMGroupName] = pods
+
+		}
+
+		// pods variable inside the if is in different scope
+		pods = podsMap[vm.VMGroupName]
+
+		counter := 0
+
+		for _, pod := range pods.Items {
+			// Increment the counter for every pod found
+			if pod.Spec.NodeName == "vm-"+strconv.Itoa(vm.Id) {
+				counter += 1
+			}
+		}
+
+		if counter == 0 {
+			// If no pods have been found, delete the VM
+			s.onController.VM(vm.Id).TerminateHard()
+		}
+
+	}
 
 	return nil
 }
