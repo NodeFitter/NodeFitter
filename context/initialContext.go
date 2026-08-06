@@ -22,11 +22,14 @@ type ControllerConfig struct {
 }
 
 type SchedulerConfig struct {
-	User                string  `yaml:"user"`
-	Password            string  `yaml:"password"`
-	Endpoint            string  `yaml:"endpoint"`
-	FreeMemoryThreshold float64 `yaml:"free_ram_threshold"`
-	FreeCPUThreshold    float32 `yaml:"free_CPU_threshold"`
+	User                        string  `yaml:"user"`
+	Password                    string  `yaml:"password"`
+	Endpoint                    string  `yaml:"endpoint"`
+	FreeMemoryThreshold         float64 `yaml:"free_ram_threshold"`
+	FreeCPUThreshold            float32 `yaml:"free_CPU_threshold"`
+	KubernetesConfigPath        string  `yaml:"kubernetes_config_path"`
+	KubernetesCACertificatePath string  `yaml:"kubernetes_ca_certificate_path"`
+	KubernetesEndpoint          string  `yaml:"kubernetes_endpoint"`
 }
 
 type InitialContext struct {

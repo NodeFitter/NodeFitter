@@ -1,18 +1,17 @@
 package main
 
 func main() {
-	/*
-		//EXAMPLE STARTUP CODE
-		a := context.InitialContext{}
-		a.ReadConfig()
 
-		var b sa.Ischeduler = &scheduler.Scheduler{} // import sa "github.com/NodeFitter/NodeFitter/scheduler/abstraction"
+	//EXAMPLE STARTUP CODE
+	/*a := context.InitialContext{}
+	a.ReadConfig()
 
-		//var c ca.Icontroller = &controller.Controller{} // import ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
+	var b sa.Ischeduler = &scheduler.Scheduler{} // import sa "github.com/NodeFitter/NodeFitter/scheduler/abstraction"
 
-		b.Start(a.SchedulerContext)
+	//var c ca.Icontroller = &controller.Controller{} // import ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
 
-		b.PrintVm()
-	*/
+	b.Start(a.SchedulerContext)
+
+	b.GetVMs()*/
 
 }

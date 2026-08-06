@@ -5,7 +5,35 @@
 Opennebula monitoring data include information about the hypervisor, therefore, ram consumption includes measurements of both VM AND hypervisor. The only way to get memory info about VM memory consumption is push them from inside the VM itself. The following approach uses opennebula's onegate: data will be visible under user template.
 
 ### Requirements and instructions
+
+> [!TIP]
+> To change the control plane serving address, follow these steps:
+> - Create a file with the new cluster configuration named `kubeadm-config.yaml`:
+>   ```yaml
+>     apiVersion: kubeadm.k8s.io/v1beta4
+>     kind: ClusterConfiguration
+>     
+>     kubernetesVersion: v1.36.3
+>     
+>     controlPlaneEndpoint: "192.168.56.103:6443"
+>     
+>     apiServer:
+>       certSANs:
+>         - 192.168.56.103
+>         - 10.0.2.15
+>     
+>   ```
+> - Regenerate the certificates with:
+>   ```sh
+>   sudo mv /etc/kubernetes/pki/apiserver.crt /etc/kubernetes/pki/apiserver.crt.old
+>   sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.old
+>   sudo kubeadm init phase certs apiserver --config kubeadm-cert-config.yaml
+>   ```
+> - Edit `/etc/kubernetes/manifests/kube-apiserver.yaml` to substitute any reference to the old address with the new one. Kubernetes will restart the API server upon saving;
+> - Edit `/etc/kubernetes/admin.conf` to substitute any reference to the old address with the new one.
+
 - VM template must have QEMU Guest Agent (under OS & CPU) set to yes
+- VM template must have SET_HOSTNAME as key and vm-$VMID as value under Context Custom Variables
 - VM template must have OneGate token (under context)
 - A script inside the vm (under `/bin`) that push the data with:
     ```onegate vm update --data 'TEST_KEY="test_value"```
@@ -78,6 +106,10 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
 - Install Docker and Kubernetes as described in the previous section. To join the cluster use the command outputted by:
   ```sh
   kubeadm token create --print-join-command
+  ```
+  However, the scheduler automatically inserts a valid kubeadm join command under context. Insert as start script the command:
+  ```sh
+  eval $(cat /var/run/one_context/one_env | grep kubeadm) && eval $K8_JOIN_COMMAND
   ```
 
 If Alpine Linux is preferred, refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s

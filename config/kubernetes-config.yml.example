@@ -1,0 +1,20 @@
+# A copy of the needed config can be found under .kube/config or /etc/kubernetes/admin.conf in the control plane node
+
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: data
+    server: https://kubernetes-addr:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-admin
+  name: kubernetes-admin@kubernetes
+current-context: kubernetes-admin@kubernetes
+kind: Config
+users:
+- name: kubernetes-admin
+  user:
+    client-certificate-data: data
+    client-key-data: data
