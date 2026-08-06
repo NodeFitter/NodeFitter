@@ -158,7 +158,7 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	s.vms = make(map[int]*Node)
 
 	// Set check interval
-	if ctx.SchedulerProcessInterval <= 0 {
+	if ctx.SchedulerProcessInterval <= 0 || ctx.PreserveVMTimeout <= 0 {
 		return ErrorConfigNotValid
 	}
 
