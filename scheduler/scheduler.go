@@ -22,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubectl/pkg/drain"
 )
 
 var (
@@ -542,6 +543,8 @@ func (s *Scheduler) checkAndUnschedule() error {
 	// N.B.: assuming namespaces names and label "type" keys match OpenNebula VM groups names
 	for _, vm := range s.vms {
 
+		vmNodeName := "vm-" + strconv.Itoa(vm.Id)
+
 		if time.Since(vm.InstantiationTimestamp) < time.Duration(s.preserveVMTimeout)*time.Second {
 			// Ignore the VM if it had been instantiated less than preserveVMTimeout seconds ago
 			continue
@@ -571,7 +574,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 
 		for _, pod := range pods.Items {
 			// Increment the counter for every pod found
-			if pod.Spec.NodeName == "vm-"+strconv.Itoa(vm.Id) {
+			if pod.Spec.NodeName == vmNodeName {
 				counter += 1
 			}
 		}
@@ -579,6 +582,40 @@ func (s *Scheduler) checkAndUnschedule() error {
 		if counter == 0 {
 			// If no pods have been found, delete the VM
 			s.onController.VM(vm.Id).TerminateHard()
+
+			// Get the now non-existent node
+			node, err := s.k8Client.CoreV1().Nodes().Get(
+				sysContext.Background(),
+				vmNodeName,
+				metav1.GetOptions{},
+			)
+
+			if err != nil {
+				continue
+			}
+
+			// Delete the node
+			helper := &drain.Helper{
+				Client:              s.k8Client,
+				Force:               false,
+				IgnoreAllDaemonSets: true,
+				DeleteEmptyDirData:  true,
+				Timeout:             0,
+			}
+
+			// Cordon the node (prevents new scheduling of pods)
+			drain.RunCordonOrUncordon(helper, node, true)
+
+			// Drain the node from its pods
+			drain.RunNodeDrain(helper, vmNodeName)
+
+			// Delete the node
+			s.k8Client.CoreV1().Nodes().Delete(
+				sysContext.Background(),
+				vmNodeName,
+				metav1.DeleteOptions{},
+			)
+
 		}
 
 	}
