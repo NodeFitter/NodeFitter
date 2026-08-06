@@ -8,3 +8,4 @@ kubernetes_endpoint: https://kubernetes-addr:6443
 
 free_ram_threshold: 100
 free_CPU_threshold: 9.5
+schedule_check_interval: 180 # How many seconds wait before scan the VMs and check wether new VMs are needed or need to be stopped. Must be a positive integer different from 0

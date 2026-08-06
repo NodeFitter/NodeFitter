@@ -27,6 +27,7 @@ type SchedulerConfig struct {
 	Endpoint                    string  `yaml:"endpoint"`
 	FreeMemoryThreshold         float64 `yaml:"free_ram_threshold"`
 	FreeCPUThreshold            float32 `yaml:"free_CPU_threshold"`
+	SchedulerProcessInterval    int     `yaml:"schedule_check_interval"`
 	KubernetesConfigPath        string  `yaml:"kubernetes_config_path"`
 	KubernetesCACertificatePath string  `yaml:"kubernetes_ca_certificate_path"`
 	KubernetesEndpoint          string  `yaml:"kubernetes_endpoint"`

@@ -29,8 +29,11 @@ var (
 )
 
 var (
-	ErrorNoInitializedConfig = errors.New("error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
-	ErrorCACertPemDecoding   = errors.New("error while decoding PEM of kubernetes certificate")
+	ErrorNoInitializedConfig    = errors.New("error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
+	ErrorConfigNotValid         = errors.New("error while reading the configuration file: a not valid data has been read")
+	ErrorCACertPemDecoding      = errors.New("error while decoding PEM of kubernetes certificate")
+	ErrorSchedulerAlreadyActive = errors.New("error while starting the scheduler process: the scheduler is already active")
+	ErrorSchedulerNotActive     = errors.New("error while stopping the scheduler process: the scheduler is not active")
 )
 
 type Node struct {
@@ -59,6 +62,10 @@ type Scheduler struct {
 
 	// Scheduler internal list of nodes (VMs)
 	vms map[int]*Node
+
+	// Scheduler timer
+	ticker   *time.Ticker
+	interval int
 }
 
 func (s *Scheduler) UpdateMemoryThreshold(newThresholdInMb float64) error {
@@ -147,8 +154,16 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	// Create initial map of nodes
 	s.vms = make(map[int]*Node)
 
+	// Set check interval
+	if ctx.SchedulerProcessInterval <= 0 {
+		return ErrorConfigNotValid
+	}
+
+	s.interval = ctx.SchedulerProcessInterval
+
 	s.hasBeenStarted = true
-	s.checkAndSchedule()
+
+	s.StartScheduleProcess()
 
 	return nil
 }
@@ -395,6 +410,44 @@ func (s *Scheduler) updateVmMap() error {
 
 }
 
+func (s *Scheduler) StartScheduleProcess() error {
+
+	if !s.hasBeenStarted {
+		return ErrorNoInitializedConfig
+	}
+
+	if s.ticker != nil {
+		return ErrorSchedulerAlreadyActive
+	}
+
+	go s.startScheduleProcess()
+
+	return nil
+}
+
+func (s *Scheduler) startScheduleProcess() {
+
+	s.ticker = time.NewTicker(time.Duration(s.interval) * time.Second)
+
+	for range s.ticker.C {
+		s.checkAndSchedule()
+	}
+
+}
+
+func (s *Scheduler) StopScheduleProcess() error {
+
+	if s.ticker != nil {
+		s.ticker.Stop()
+	} else {
+		return ErrorSchedulerNotActive
+	}
+
+	s.ticker = nil
+
+	return nil
+}
+
 func (s *Scheduler) checkAndSchedule() error {
 
 	// Update vm map
@@ -444,10 +497,14 @@ func (s *Scheduler) checkAndSchedule() error {
 		}
 	}
 
-	return nil
+	// Check if some vm can be removed
+	err := s.checkAndUnschedule()
+
+	return err
 }
 
 func (s *Scheduler) checkAndUnschedule() error {
+
 	// Update vm map
 	s.updateVmMap()
 
