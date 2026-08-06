@@ -15,12 +15,12 @@ Opennebula monitoring data include information about the hypervisor, therefore, 
 >     
 >     kubernetesVersion: v1.36.3
 >     
->     controlPlaneEndpoint: "192.168.56.103:6443"
+>     controlPlaneEndpoint: "192.0.2.1:6443" # Insert the new ip
 >     
 >     apiServer:
->       certSANs:
->         - 192.168.56.103
->         - 10.0.2.15
+>       certSANs: # Insert all ip addresses that can be used to contact the control plane
+>         - 192.0.2.1
+>         - 192.0.2.2
 >     
 >   ```
 > - Regenerate the certificates with:

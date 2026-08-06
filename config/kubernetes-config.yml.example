@@ -4,7 +4,7 @@ apiVersion: v1
 clusters:
 - cluster:
     certificate-authority-data: data
-    server: https://kubernetes-addr:6443
+    server: https://192.0.2.1:6443
   name: kubernetes
 contexts:
 - context:
