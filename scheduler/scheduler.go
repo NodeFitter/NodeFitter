@@ -192,18 +192,22 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 			continue
 		}
 
-		if qt == 0 {
+		if qt == 0 && t.Name == "Ubuntu-final" {
 			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
 
 			if err == nil && s.vms[newId] == nil {
 				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: t.Name, VMTemplateId: t.ID, InstantiationTimestamp: time.Now()}
+			} else {
+				fmt.Println(err)
 			}
 		}
 	}
 
 	s.hasBeenStarted = true
 
-	s.StartScheduleProcess()
+	//s.StartScheduleProcess()
+
+	fmt.Println("END")
 
 	return nil
 }

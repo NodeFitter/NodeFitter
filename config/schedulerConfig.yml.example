@@ -5,7 +5,7 @@ res_script_path: "./VMsConfig/res_info.sh"
 
 kubernetes_config_path: "./config/kubernetes-config.yml"
 kubernetes_ca_certificate_path: "./kubernetesCert/ca.crt"
-kubernetes_endpoint: https://192.0.2.1:6443
+kubernetes_endpoint: 192.0.2.1:6443
 
 free_ram_threshold: 100
 free_CPU_threshold: 9.5
