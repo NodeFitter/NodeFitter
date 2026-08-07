@@ -68,6 +68,12 @@ and adding the command:
 
 ## Kubernetes setup
 
+> [!NOTE]
+> In case DNS had not been set up, any download could fail since domains are impossible to resolve. A quick fix is executing the following command:
+> ```sh
+> echo "nameserver 8.8.8.8" > /etc/resolv.conf
+> ```
+
 ### Host instructions
 - Install Docker as described here https://docs.docker.com/engine/install/ubuntu/
 - Install K8 as described here https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/

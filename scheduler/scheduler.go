@@ -192,7 +192,7 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 			continue
 		}
 
-		if qt == 0 && t.Name == "Ubuntu-final" {
+		if qt == 0 {
 			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
 
 			if err == nil && s.vms[newId] == nil {
@@ -206,8 +206,6 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	s.hasBeenStarted = true
 
 	//s.StartScheduleProcess()
-
-	fmt.Println("END")
 
 	return nil
 }
