@@ -1,6 +1,7 @@
 user: "on-username"
 password: "on-password"
 endpoint: "http://192.0.2.3:2633/RPC2"
+res_script_path: "./VMsConfig/res_info.sh"
 
 kubernetes_config_path: "./config/kubernetes-config.yml"
 kubernetes_ca_certificate_path: "./kubernetesCert/ca.crt"

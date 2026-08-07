@@ -34,8 +34,10 @@ Opennebula monitoring data include information about the hypervisor, therefore, 
 
 - VM template must have QEMU Guest Agent (under OS & CPU) set to yes
 - VM template must have OneGate token enabled (under context)
-- A script inside the vm (under `/bin`) that push the data with:
+- A script inside the vm (under `/bin`) that push the CPU and memory data with:
     ```onegate vm update --data 'TEST_KEY="test_value"```
+  In this readme such file is referred as `res_info` or `res_info.sh`
+  
 
 > [!TIP]
 > In case of onegate error:
@@ -49,7 +51,11 @@ Opennebula monitoring data include information about the hypervisor, therefore, 
 >   ```
 
 > [!NOTE]
-> Script must be renamed by removing the .sh and placed inside `/bin` folder of the VM. The script in this guide has been named res_info
+> The scheduler is able to automatically upload a command to generate the script to the VM. Create a script anywhere in your machine and configure its position in the scheduler configuration file (check the `config` folder). The scheduler will parse the file, and uploaded as a context variable in the new VM template. To automatically setup the script in the VM, set the following lines in the VM template start script (under context section):
+> ```sh
+> cat /var/run/one-context/one_env > /tmp/var
+> source /tmp/var && eval $RES_SCRIPT_INSTALL_COMMAND
+> ```
 
 - Modify guestconfig.conf under `/var/lib/one/remotes/etc/im/kvm-probes.d/guestagent.conf`, setting
 ```
@@ -106,10 +112,12 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
   ```sh
   kubeadm token create --print-join-command
   ```
-  However, the scheduler automatically inserts a valid kubeadm join command under context. Insert as start script the command:
+  However, the scheduler automatically inserts a valid kubeadm join command under context. Insert as start script the following commands:
   ```sh
-  eval $(cat /var/run/one_context/one_env | grep kubeadm) && eval $K8_JOIN_COMMAND
+  cat /var/run/one-context/one_env > /tmp/var
+  source /tmp/var && eval $K8_JOIN_COMMAND
   ```
+  If you already run the source command in the start script, adding `eval $K8_JOIN_COMMAND` is sufficient.
   If Alpine Linux is preferred, refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s
 - VM template must have SET_HOSTNAME as key and vm-$VMID as value under Context Custom Variables;
 - VM has to be part of an OpenNebula VM group which name is the same as the various pods nodeselector regions;

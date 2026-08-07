@@ -22,16 +22,19 @@ type ControllerConfig struct {
 }
 
 type SchedulerConfig struct {
-	User                        string  `yaml:"user"`
-	Password                    string  `yaml:"password"`
-	Endpoint                    string  `yaml:"endpoint"`
-	FreeMemoryThreshold         float64 `yaml:"free_ram_threshold"`
-	FreeCPUThreshold            float32 `yaml:"free_CPU_threshold"`
-	SchedulerProcessInterval    int     `yaml:"schedule_check_interval"`
-	PreserveVMTimeout           int     `yaml:"schedule_preserve_VM_timeout"`
-	KubernetesConfigPath        string  `yaml:"kubernetes_config_path"`
-	KubernetesCACertificatePath string  `yaml:"kubernetes_ca_certificate_path"`
-	KubernetesEndpoint          string  `yaml:"kubernetes_endpoint"`
+	User          string `yaml:"user"`
+	Password      string `yaml:"password"`
+	Endpoint      string `yaml:"endpoint"`
+	ResScriptPath string `yaml:"res_script_path"`
+
+	KubernetesConfigPath        string `yaml:"kubernetes_config_path"`
+	KubernetesCACertificatePath string `yaml:"kubernetes_ca_certificate_path"`
+	KubernetesEndpoint          string `yaml:"kubernetes_endpoint"`
+
+	FreeMemoryThreshold      float64 `yaml:"free_ram_threshold"`
+	FreeCPUThreshold         float32 `yaml:"free_CPU_threshold"`
+	SchedulerProcessInterval int     `yaml:"schedule_check_interval"`
+	PreserveVMTimeout        int     `yaml:"schedule_preserve_VM_timeout"`
 }
 
 type InitialContext struct {
