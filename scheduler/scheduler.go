@@ -195,8 +195,18 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 		if qt == 0 {
 			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
 
+			vmGroupName := ""
+
+			vmGroupVector, err := t.Template.GetVector("VMGROUP")
+			if err == nil {
+				vmGroupPair, err := vmGroupVector.GetPair("VMGROUP_ID")
+				if err == nil {
+					vmGroupName = s.getVMGroupById(vmGroupPair.Value)
+				}
+			}
+
 			if err == nil && s.vms[newId] == nil {
-				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: t.Name, VMTemplateId: t.ID, InstantiationTimestamp: time.Now()}
+				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vmGroupName, VMTemplateId: t.ID, InstantiationTimestamp: time.Now()}
 			} else {
 				fmt.Println(err)
 			}
@@ -575,6 +585,8 @@ func (s *Scheduler) checkAndSchedule() error {
 			if err != nil {
 				continue
 			}
+
+			vm.InstantiationTimestamp = time.Now()
 
 			if s.vms[newId] == nil {
 				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vm.VMGroupName, VMTemplateId: vm.VMTemplateId, InstantiationTimestamp: time.Now()}
