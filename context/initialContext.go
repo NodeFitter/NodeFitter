@@ -19,6 +19,7 @@ var (
 )
 
 type ControllerConfig struct {
+	Socket string `yaml:"socket"`
 }
 
 type SchedulerConfig struct {
