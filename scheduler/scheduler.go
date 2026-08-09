@@ -1,47 +1,113 @@
 package scheduler
 
 import (
+	sysContext "context"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/NodeFitter/NodeFitter/context"
 	"github.com/NodeFitter/NodeFitter/utility"
 	"github.com/OpenNebula/one/src/oca/go/src/goca"
+	"go.rtnl.ai/x/randstr"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubectl/pkg/drain"
 )
 
 var (
-	ErrorNoInitializedConfig = errors.New("error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
+	tokenAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 )
 
-type node struct {
-	id           int
-	availableMem float64
-	availableCPU float32
-	vmGroupName  string
-	vmTemplateId int
+var (
+	ErrorNoInitializedConfig         = errors.New("error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
+	ErrorConfigNotValid              = errors.New("error while reading the configuration file: a not valid data has been read")
+	ErrorInitialInstantiationFailure = errors.New("error while performing initial VM instantiation")
+	ErrorCACertPemDecoding           = errors.New("error while decoding PEM of kubernetes certificate")
+	ErrorSchedulerAlreadyActive      = errors.New("error while starting the scheduler process: the scheduler is already active")
+	ErrorSchedulerNotActive          = errors.New("error while stopping the scheduler process: the scheduler is not active")
+)
+
+type Node struct {
+	Id                     int
+	AvailableMem           float64
+	AvailableCPU           float32
+	VMGroupName            string
+	VMTemplateId           int
+	InstantiationTimestamp time.Time
 }
 
 type Scheduler struct {
 	// OpenNebula controller
 	onController *goca.Controller
 
+	// Kubernetes client
+	k8Client *kubernetes.Clientset
+
 	// Scheduler parameters
+	resScriptBase64     string
 	freeMemoryThreshold utility.CType[float64]
 	freeCPUThreshold    utility.CType[float32]
 	hasBeenStarted      bool
 
+	// Kubernetes token generation data
+	kubernetesCASHA string
+	k8Endpoint      string
+
 	// Scheduler internal list of nodes (VMs)
-	vms map[int]*node
+	vms map[int]*Node
+
+	// Scheduler timer
+	ticker            *time.Ticker
+	interval          int
+	preserveVMTimeout int
 }
 
-func (s *Scheduler) UpdateMemoryThreshold(newThresholdInMb float64) {
+func (s *Scheduler) UpdateMemoryThreshold(newThresholdInMb float64) error {
 	s.freeMemoryThreshold.Set(newThresholdInMb)
+	return nil
 }
 
-func (s *Scheduler) UpdateCPUThreshold(newThresholdInPercentage float32) {
+func (s *Scheduler) UpdateCPUThreshold(newThresholdInPercentage float32) error {
 	s.freeCPUThreshold.Set(newThresholdInPercentage)
+	return nil
+}
+
+func (s *Scheduler) UpdateKubernetesCASHA(CApath string) error {
+
+	if CApath == "" {
+
+		// If path was not provided, check default locations
+		CApath = "./kubernetesCert/ca.crt"
+
+		// Check file presence
+		_, err := os.Stat(CApath)
+
+		if os.IsNotExist(err) {
+			CApath = "/etc/kubernetes/pki/ca.crt"
+		}
+	}
+
+	caSHA, err := s.calculateCACertSHA(CApath)
+
+	if err != nil {
+		return err
+	}
+
+	s.kubernetesCASHA = caSHA
+
+	return nil
 }
 
 func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
@@ -61,13 +127,175 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 
 	s.onController = goca.NewController(client)
 
+	// Create kubernetes connection
+	config, err := clientcmd.BuildConfigFromFlags(
+		"",
+		ctx.KubernetesConfigPath,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	k8Client, err := kubernetes.NewForConfig(config)
+
+	if err != nil {
+		return err
+	}
+
+	s.k8Client = k8Client
+
+	// Calculate SHA256 of certificate
+	caSHA, err := s.calculateCACertSHA(ctx.KubernetesCACertificatePath)
+
+	if err != nil {
+		return err
+	}
+
+	s.kubernetesCASHA = caSHA
+
+	// Memorize kubernetes endpoint (useful for token generation)
+	s.k8Endpoint = ctx.KubernetesEndpoint
+
 	// Create initial map of nodes
-	s.vms = make(map[int]*node)
+	s.vms = make(map[int]*Node)
+
+	// Set check interval
+	if ctx.SchedulerProcessInterval <= 0 || ctx.PreserveVMTimeout <= 0 {
+		return ErrorConfigNotValid
+	}
+
+	s.interval = ctx.SchedulerProcessInterval
+
+	s.preserveVMTimeout = ctx.PreserveVMTimeout
+
+	// Save the resource getter script
+	shellFile, err := os.ReadFile(ctx.ResScriptPath)
+
+	if err != nil {
+		return err
+	}
+
+	s.resScriptBase64 = base64.StdEncoding.EncodeToString(shellFile)
+
+	// Check if there is one vm per type of template
+	templates, err := s.onController.Templates().Info()
+
+	if err != nil {
+		return ErrorInitialInstantiationFailure
+	}
+
+	for _, t := range templates.Templates {
+		qt, err := s.getQtOfVMsByTemplateId(t.ID)
+
+		if err != nil {
+			continue
+		}
+
+		if qt == 0 {
+			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
+
+			if err == nil && s.vms[newId] == nil {
+				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: t.Name, VMTemplateId: t.ID, InstantiationTimestamp: time.Now()}
+			} else {
+				fmt.Println(err)
+			}
+		}
+	}
 
 	s.hasBeenStarted = true
-	s.checkAndSchedule()
+
+	//s.StartScheduleProcess()
 
 	return nil
+}
+
+func (s *Scheduler) createKubernetesJoinToken() (string, error) {
+
+	// Generate randomly token ID and secret
+	tokenID := randstr.Generate(6, tokenAlphabet)
+	tokenSecret := randstr.Generate(16, tokenAlphabet)
+
+	token := tokenID + "." + tokenSecret
+
+	// Set expiration date of token to 24h
+	expirationTime := time.Now().
+		Add(10 * time.Minute).
+		UTC().
+		Format(time.RFC3339)
+
+	// Create the secret to later upload to the control plane
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bootstrap-token-" + tokenID,
+			Namespace: "kube-system",
+			Labels: map[string]string{
+				"auth-kubernetes-io/token-bootstrap": "true",
+			},
+		},
+
+		Type: corev1.SecretType("bootstrap.kubernetes.io/token"),
+
+		StringData: map[string]string{
+			"token-id":                       tokenID,
+			"token-secret":                   tokenSecret,
+			"expiration":                     expirationTime,
+			"usage-bootstrap-authentication": "true",
+			"usage-bootstrap-signing":        "true",
+			"auth-extra-groups":              "system:bootstrappers:kubeadm:default-node-token",
+		},
+	}
+
+	// Copy token to control plane
+	_, err := s.k8Client.CoreV1().
+		Secrets("kube-system").
+		Create(
+			sysContext.Background(),
+			secret,
+			metav1.CreateOptions{},
+		)
+
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func (s *Scheduler) calculateCACertSHA(certPath string) (string, error) {
+
+	// Read certificate file
+	data, err := os.ReadFile(certPath)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Get PEM blocks
+	pemBlocks, _ := pem.Decode(data)
+
+	if pemBlocks == nil {
+		return "", ErrorCACertPemDecoding
+	}
+
+	// Parse certificate
+	cert, err := x509.ParseCertificate(pemBlocks.Bytes)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Marshal key
+	key, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Calculate sha256
+	hash := sha256.Sum256(key)
+
+	return fmt.Sprintf("%x", hash[:]), nil
 }
 
 func (s *Scheduler) getVMGroupById(id string) string {
@@ -182,14 +410,14 @@ func (s *Scheduler) updateVmMap() error {
 		}
 
 		if s.vms[ivm.ID] == nil {
-			s.vms[ivm.ID] = &node{id: ivm.ID}
+			s.vms[ivm.ID] = &Node{Id: ivm.ID}
 		}
 
 		// Set vm list for mem
-		s.vms[ivm.ID].availableMem = freeMem
+		s.vms[ivm.ID].AvailableMem = freeMem
 
 		// Set vm list for cpu
-		s.vms[ivm.ID].availableCPU = float32(freeCPU)
+		s.vms[ivm.ID].AvailableCPU = float32(freeCPU)
 
 		// Retrieve vm group name
 		vmGroupName := ""
@@ -202,7 +430,7 @@ func (s *Scheduler) updateVmMap() error {
 		}
 
 		// Retrieve vm group name
-		s.vms[ivm.ID].vmGroupName = vmGroupName
+		s.vms[ivm.ID].VMGroupName = vmGroupName
 
 		// Retrieve vm template id
 		templateIdPair, err := vmTemplate.GetPair("TEMPLATE_ID")
@@ -217,11 +445,118 @@ func (s *Scheduler) updateVmMap() error {
 			continue
 		}
 
-		s.vms[ivm.ID].vmTemplateId = templateId
+		s.vms[ivm.ID].VMTemplateId = templateId
+		s.vms[ivm.ID].InstantiationTimestamp = time.Now()
 	}
 
 	return nil
 
+}
+
+func (s *Scheduler) StartScheduleProcess() error {
+
+	if !s.hasBeenStarted {
+		return ErrorNoInitializedConfig
+	}
+
+	if s.ticker != nil {
+		return ErrorSchedulerAlreadyActive
+	}
+
+	go s.startScheduleProcess()
+
+	return nil
+}
+
+func (s *Scheduler) startScheduleProcess() {
+
+	s.ticker = time.NewTicker(time.Duration(s.interval) * time.Second)
+
+	for range s.ticker.C {
+		s.checkAndSchedule()
+	}
+
+}
+
+func (s *Scheduler) StopScheduleProcess() error {
+
+	if s.ticker != nil {
+		s.ticker.Stop()
+	} else {
+		return ErrorSchedulerNotActive
+	}
+
+	s.ticker = nil
+
+	return nil
+}
+
+func (s *Scheduler) instantiateVMByTemplateId(templateId int, vmGroupName string) (int, error) {
+	tc := s.onController.Template(templateId)
+
+	// Generate a token to make the new vm join the kubernetes cluster
+	token, err := s.createKubernetesJoinToken()
+
+	if err != nil {
+		return -1, err
+	}
+
+	originalJoinCmd := fmt.Sprintf(`apiVersion: kubeadm.k8s.io/v1beta4
+kind: JoinConfiguration
+
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: %s
+    token: %s
+    caCertHashes:
+      - sha256:%s
+
+nodeRegistration:
+  kubeletExtraArgs:
+    - name: node-labels
+      value: type=%s
+`, s.k8Endpoint, token, s.kubernetesCASHA, vmGroupName)
+
+	encodedJoinCommand := base64.StdEncoding.EncodeToString([]byte(originalJoinCmd))
+
+	joinCmd := fmt.Sprintf(
+		`echo %s | base64 -d >/tmp/worker-join.yaml && kubeadm join --config /tmp/worker-join.yaml`,
+		encodedJoinCommand,
+	)
+
+	// Generate the command to install the resources script inside the vm
+	shellInstallationCmd := fmt.Sprintf(
+		`echo %s | base64 -d >/tmp/res_info.sh && cp /tmp/res_info.sh /bin/res_info && chmod +x /bin/res_info`,
+		s.resScriptBase64,
+	)
+
+	// Recover template context: it is necessary so it is possible to inject the kubeadm join command and resource script that later the vm could execute
+	templateInfo, err := tc.Info(true, true)
+
+	if err != nil {
+		return -1, err
+	}
+
+	oldContextVector, err := templateInfo.Template.GetVector("CONTEXT")
+
+	if err != nil {
+		return -1, err
+	}
+
+	oldContext := oldContextVector.String()
+
+	oldContext = oldContext[:len(oldContext)-2] // Remove final ] char
+
+	updatedContext := oldContext + `,
+			K8_JOIN_COMMAND = "` + joinCmd + `",
+			RES_SCRIPT_INSTALL_COMMAND = "` + shellInstallationCmd + `"
+			]
+			`
+
+	// Instantiate the vm with the new context
+	newId, err := tc.Instantiate(uuid.New().String(), false, updatedContext, false)
+
+	return newId, err
 }
 
 func (s *Scheduler) checkAndSchedule() error {
@@ -231,47 +566,149 @@ func (s *Scheduler) checkAndSchedule() error {
 
 	for _, vm := range s.vms {
 
-		if vm.availableMem <= s.freeMemoryThreshold.Get() || vm.availableCPU <= s.freeCPUThreshold.Get() {
+		if vm.AvailableMem <= s.freeMemoryThreshold.Get() || vm.AvailableCPU <= s.freeCPUThreshold.Get() {
 
-			fmt.Println(vm.availableMem, "<=", s.freeMemoryThreshold.Get(), vm.availableCPU, "<=", s.freeCPUThreshold.Get())
+			templateId := vm.VMTemplateId
 
-			templateId := vm.vmTemplateId
-
-			tc := s.onController.Template(templateId)
-
-			// Recover template context: it is necessary so it is possible to inject the kubeadm join command that later the vm could execute
-			templateInfo, err := tc.Info(true, true)
+			newId, err := s.instantiateVMByTemplateId(templateId, vm.VMGroupName)
 
 			if err != nil {
 				continue
 			}
 
-			oldContextVector, err := templateInfo.Template.GetVector("CONTEXT")
-
-			if err != nil {
-				continue
+			if s.vms[newId] == nil {
+				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vm.VMGroupName, VMTemplateId: vm.VMTemplateId, InstantiationTimestamp: time.Now()}
 			}
-
-			oldContext := oldContextVector.String()
-
-			oldContext = oldContext[:len(oldContext)-2] // Remove final ] char
-
-			updatedContext := oldContext + `,
-			K8_JOIN_COMMAND = "kubeadm join --token test --discovery-token-ca-cert-hash sha256:sha_sum"
-			]
-			`
-
-			// Instantiate the vm with the new context
-			tc.Instantiate("clone of "+strconv.Itoa(vm.id), false, updatedContext, false)
 		}
+	}
+
+	// Check if some vm can be removed
+	err := s.checkAndUnschedule()
+
+	return err
+}
+
+func (s *Scheduler) checkAndUnschedule() error {
+
+	// Update vm map
+	s.updateVmMap()
+
+	// Recover all pods
+	podsMap := make(map[string]*corev1.PodList)
+
+	// Retrieve all pods running in the various VMs
+	// N.B.: assuming Nodes join the cluster with name vm-$VMID
+	// N.B.: assuming namespaces names and label "type" keys match OpenNebula VM groups names
+	for _, vm := range s.vms {
+
+		vmNodeName := "vm-" + strconv.Itoa(vm.Id)
+
+		// Check how many VMs of the same type are present
+		vmQt, err := s.getQtOfVMsByTemplateId(vm.VMTemplateId)
+
+		if err != nil {
+			continue
+		}
+
+		// Recover the vm status
+		vmInfo, err := s.onController.VM(vm.Id).Info(true)
+
+		if err != nil {
+			continue
+		}
+
+		_, vmState, err := vmInfo.State()
+
+		if err != nil {
+			continue
+		}
+
+		if time.Since(vm.InstantiationTimestamp) < time.Duration(s.preserveVMTimeout)*time.Second || vmQt <= 1 || vmState.String() != "RUNNING" {
+			// Ignore the VM if it had been instantiated less than preserveVMTimeout seconds ago, if it is the only vm of such type or if the vm is in a state different from running (LCMState set at 3, RUNNING)
+			continue
+		}
+
+		// Get all pods scheduled in the namespace to which the node is part of
+		pods := podsMap[vm.VMGroupName]
+
+		if pods == nil {
+			pods, err := s.k8Client.CoreV1().Pods(vm.VMGroupName).List(
+				sysContext.TODO(),
+				metav1.ListOptions{},
+			)
+
+			if err != nil {
+				continue
+			}
+
+			podsMap[vm.VMGroupName] = pods
+
+		}
+
+		// pods variable inside the if is in different scope
+		pods = podsMap[vm.VMGroupName]
+
+		counter := 0
+
+		for _, pod := range pods.Items {
+			// Increment the counter for every pod found
+			if pod.Spec.NodeName == vmNodeName {
+				counter += 1
+			}
+		}
+
+		if counter == 0 {
+			// If no pods have been found, delete the VM
+			s.onController.VM(vm.Id).TerminateHard()
+
+			// Get the now non-existent node
+			node, err := s.k8Client.CoreV1().Nodes().Get(
+				sysContext.Background(),
+				vmNodeName,
+				metav1.GetOptions{},
+			)
+
+			if err != nil {
+				continue
+			}
+
+			// Delete the node
+			helper := &drain.Helper{
+				Client:              s.k8Client,
+				Force:               false,
+				IgnoreAllDaemonSets: true,
+				DeleteEmptyDirData:  true,
+				Timeout:             0,
+			}
+
+			// Cordon the node (prevents new scheduling of pods)
+			drain.RunCordonOrUncordon(helper, node, true)
+
+			// Drain the node from its pods
+			drain.RunNodeDrain(helper, vmNodeName)
+
+			// Delete the node
+			s.k8Client.CoreV1().Nodes().Delete(
+				sysContext.Background(),
+				vmNodeName,
+				metav1.DeleteOptions{},
+			)
+
+		}
+
 	}
 
 	return nil
 }
 
-func (s *Scheduler) PrintVm() {
-	fmt.Println("--- VMs ---")
-	for i, vm := range s.vms {
-		fmt.Println(i, " - ", vm.availableCPU, vm.availableMem, vm.vmGroupName, vm.vmTemplateId)
+func (s *Scheduler) GetVMs() []Node {
+	vmList := make([]Node, len(s.vms))
+	index := 0
+
+	for _, vm := range s.vms {
+		vmList[index] = *vm
+		index += 1
 	}
+
+	return vmList
 }

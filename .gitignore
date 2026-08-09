@@ -1,2 +1,4 @@
 schedulerConfig.yml
 controllerConfig.yml
+kubernetes-config.yml
+ca.crt
