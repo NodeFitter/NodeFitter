@@ -8,7 +8,7 @@ import (
 	"github.com/NodeFitter/NodeFitter/controller/abstraction"
 )
 
-func Serve(socket string, ctrl *abstraction.Icontroller) error {
+func Serve(socket string, ctrl abstraction.Icontroller) error {
 	_ = os.Remove(socket)
 
 	l, err := net.Listen("unix", socket)
@@ -17,7 +17,7 @@ func Serve(socket string, ctrl *abstraction.Icontroller) error {
 	}
 
 	if err := rpc.Register(ctrl); err != nil {
-		l.Close()
+		_ = l.Close()
 		return err
 	}
 

@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/NodeFitter/NodeFitter/context"
+	"github.com/NodeFitter/NodeFitter/controller"
+	ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
 	"github.com/NodeFitter/NodeFitter/scheduler"
 	sa "github.com/NodeFitter/NodeFitter/scheduler/abstraction"
 )
@@ -14,16 +17,35 @@ import (
 func main() {
 
 	//EXAMPLE STARTUP CODE
+	log.Println("[*] Reading configs...")
 	a := context.InitialContext{}
 	a.ReadConfig()
+
+	log.Println("[*] Initializing scheduler")
 
 	var b sa.Ischeduler = &scheduler.Scheduler{} // import sa "github.com/NodeFitter/NodeFitter/scheduler/abstraction"
 
 	//var c ca.Icontroller = &controller.Controller{} // import ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
 
-	b.Start(a.SchedulerContext)
+	log.Println("[*] Starting scheduler...")
+	err := b.Start(a.SchedulerContext)
+	if err != nil {
+		log.Printf("[ERROR] %s\n", err)
+	}
 
 	b.GetVMs()
+
+	var c ca.Icontroller = controller.NewController(a.ControllerContext, b)
+
+	log.Println("[*] Starting RPC server...")
+	if err := controller.Serve(
+		a.ControllerContext.Socket,
+		c,
+	); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("[*] Ready")
 
 	// Allow the scheduler to run until forcefully stopped
 	sig := make(chan os.Signal, 1)

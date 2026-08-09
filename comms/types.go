@@ -1,4 +1,6 @@
-package controller
+package comms
+
+import "github.com/NodeFitter/NodeFitter/scheduler"
 
 /*
 This file contains the types used for communication with the CLI
@@ -25,8 +27,11 @@ type UpdateCPUThresholdReply struct {
 }
 
 // Print the VMs
-type PrintVMArgs struct{}
-type PrintVMReply struct{}
+// type PrintVMArgs struct{}
+type PrintVMReply struct {
+	VMs []scheduler.Node
+}
 
 type EmptyArgs struct{}
-type EmptyReply struct{}
+
+// type EmptyReply struct{}
