@@ -111,7 +111,7 @@ OpenNebula monitoring data include information about the hypervisor, therefore, 
     ```sh
     mkdir -p $HOME/.kube
     sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-    sudo chown $(id -u):$(id -g) $HOME/.kube/con
+    sudo chown $(id -u):$(id -g) $HOME/.kube/config
     ```
 - Install a CNI (for example, Calico. Control Plan VM ONLY):
   ```sh 
