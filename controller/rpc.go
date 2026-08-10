@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log"
 	"net"
 	"net/rpc"
 	"os"
@@ -9,6 +10,7 @@ import (
 )
 
 func Serve(socket string, ctrl abstraction.Icontroller) error {
+	log.Printf("	Socket: %s\n", socket)
 	_ = os.Remove(socket)
 
 	l, err := net.Listen("unix", socket)

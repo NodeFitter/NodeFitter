@@ -87,7 +87,7 @@ func (ic *InitialContext) readControllerCofig() error {
 		return ErrorWhileReadingConfigFile
 	}
 
-	err = yaml.Unmarshal(fileBytes, &ic.SchedulerContext)
+	err = yaml.Unmarshal(fileBytes, &ic.ControllerContext)
 
 	if err != nil {
 		return ErrorWhileUnmarshallingConfigFile
