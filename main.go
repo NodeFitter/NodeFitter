@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +22,9 @@ func main() {
 
 	//var c ca.Icontroller = &controller.Controller{} // import ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
 
-	b.Start(a.SchedulerContext)
+	err := b.Start(a.SchedulerContext)
+
+	log.Println(err)
 
 	b.GetVMs()
 

@@ -35,6 +35,7 @@ type SchedulerConfig struct {
 	FreeCPUThreshold         float32 `yaml:"free_CPU_threshold"`
 	SchedulerProcessInterval int     `yaml:"schedule_check_interval"`
 	PreserveVMTimeout        int     `yaml:"schedule_preserve_VM_timeout"`
+	MaxVMsQt                 int     `yaml:"max_VM_qt"`
 }
 
 type InitialContext struct {
