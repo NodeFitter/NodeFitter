@@ -33,5 +33,4 @@ type PrintVMReply struct {
 }
 
 type EmptyArgs struct{}
-
-// type EmptyReply struct{}
+type EmptyReply struct{}

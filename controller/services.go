@@ -43,8 +43,35 @@ func (c *Controller) UpdateCPUThreshold(args *comms.UpdateCPUThresholdArgs, repl
 	return nil
 }
 
+// Return the list of all active VMs in the cluster
 func (c *Controller) PrintVM(args *comms.EmptyArgs, reply *comms.PrintVMReply) error {
 	log.Println("[CLI] Received a VM status request")
 	reply.VMs = c.scheduler.GetVMs()
+	return nil
+}
+
+func (c *Controller) Start(args *comms.EmptyArgs, reply *comms.EmptyReply) error {
+	log.Println("[CLI] Received a start request")
+	err := c.scheduler.StartScheduleProcess()
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to start the service: %s\n", err)
+		return err
+	}
+
+	log.Println("[CLI] Successfully started the scheduling process")
+	return nil
+}
+
+func (c *Controller) Stop(args *comms.EmptyArgs, reply *comms.EmptyReply) error {
+	log.Println("[CLI] Received a stop request")
+	err := c.scheduler.StopScheduleProcess()
+
+	if err != nil {
+		log.Printf("[ERROR] Failed to stop the service: %s\n", err)
+		return err
+	}
+
+	log.Println("[CLI] Successfully stopped the scheduling process")
 	return nil
 }
