@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strconv"
@@ -37,6 +38,18 @@ var (
 	ErrorCACertPemDecoding           = errors.New("error while decoding PEM of kubernetes certificate")
 	ErrorSchedulerAlreadyActive      = errors.New("error while starting the scheduler process: the scheduler is already active")
 	ErrorSchedulerNotActive          = errors.New("error while stopping the scheduler process: the scheduler is not active")
+	ErrorValueNotValid               = errors.New("error while setting the new value: not a valid value")
+	ErrorOpenNebulaConnection        = errors.New("error while connecting to OpenNebula. More details: ")
+	ErrorKubernetesConnection        = errors.New("error while connecting to Kubernetes control plane. More details: ")
+	ErrorReadingResourcesScriptFile  = errors.New("error while reading the resources script file. More details: ")
+	ErrorVmInstantiation             = errors.New("error while instantiating a new VM. More details: ")
+	ErrorGetVmQt                     = errors.New("error while getting quantity of VMs not in POWEROFF state. More details: ")
+
+	ErrorSkipTemplateDuringInitialStart = errors.New("skipping initial instantiation. More details: ")
+	ErrorSkipVmQt                       = errors.New("skipping reading VM quantity. More details: ")
+	ErrorSkipVmQtByTemplate             = errors.New("skipping reading VM quantity by template ID. More details: ")
+	ErrorSkipUpdateInternalVMMap        = errors.New("skipping internal VM map update for a VM. More details: ")
+	ErrorSkipVMUnscheduling             = errors.New("skipping unscheduling of a VM. More details: ")
 )
 
 type Node struct {
@@ -59,6 +72,7 @@ type Scheduler struct {
 	resScriptBase64     string
 	freeMemoryThreshold utility.CType[float64]
 	freeCPUThreshold    utility.CType[float32]
+	maxVMsQt            utility.CType[int]
 	hasBeenStarted      bool
 
 	// Kubernetes token generation data
@@ -75,11 +89,28 @@ type Scheduler struct {
 }
 
 func (s *Scheduler) UpdateMemoryThreshold(newThresholdInMb float64) error {
+	if newThresholdInMb < 0 {
+		return ErrorValueNotValid
+	}
+
 	s.freeMemoryThreshold.Set(newThresholdInMb)
 	return nil
 }
 
+func (s *Scheduler) UpdateVMsMaxQt(newQt int) error {
+	if newQt < 0 {
+		return ErrorValueNotValid
+	}
+
+	s.maxVMsQt.Set(newQt)
+	return nil
+}
+
 func (s *Scheduler) UpdateCPUThreshold(newThresholdInPercentage float32) error {
+	if newThresholdInPercentage < 0 {
+		return ErrorValueNotValid
+	}
+
 	s.freeCPUThreshold.Set(newThresholdInPercentage)
 	return nil
 }
@@ -122,7 +153,7 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	)
 
 	if err != nil {
-		return err
+		return errors.New(ErrorOpenNebulaConnection.Error() + err.Error())
 	}
 
 	s.onController = goca.NewController(client)
@@ -134,13 +165,13 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	)
 
 	if err != nil {
-		return err
+		return errors.New(ErrorKubernetesConnection.Error() + err.Error())
 	}
 
 	k8Client, err := kubernetes.NewForConfig(config)
 
 	if err != nil {
-		return err
+		return errors.New(ErrorKubernetesConnection.Error() + err.Error())
 	}
 
 	s.k8Client = k8Client
@@ -161,9 +192,11 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	s.vms = make(map[int]*Node)
 
 	// Set check interval
-	if ctx.SchedulerProcessInterval <= 0 || ctx.PreserveVMTimeout <= 0 {
+	if ctx.SchedulerProcessInterval <= 0 || ctx.PreserveVMTimeout <= 0 || ctx.MaxVMsQt <= 0 {
 		return ErrorConfigNotValid
 	}
+
+	s.maxVMsQt.Set(ctx.MaxVMsQt)
 
 	s.interval = ctx.SchedulerProcessInterval
 
@@ -173,7 +206,7 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 	shellFile, err := os.ReadFile(ctx.ResScriptPath)
 
 	if err != nil {
-		return err
+		return errors.New(ErrorReadingResourcesScriptFile.Error() + err.Error())
 	}
 
 	s.resScriptBase64 = base64.StdEncoding.EncodeToString(shellFile)
@@ -189,17 +222,28 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 		qt, err := s.getQtOfVMsByTemplateId(t.ID)
 
 		if err != nil {
+			log.Println(ErrorSkipTemplateDuringInitialStart, t.ID, " - ", t.Name, " ", err.Error())
 			continue
 		}
 
-		if qt == 0 {
+		currentVMQt, err := s.getQtOfVMs()
+
+		if err != nil {
+			log.Println(ErrorSkipTemplateDuringInitialStart, t.ID, " - ", t.Name, " ", err.Error())
+			continue
+		}
+
+		if qt == 0 && currentVMQt < s.maxVMsQt.Get() {
 			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
 
 			vmGroupName := ""
 
 			vmGroupVector, err := t.Template.GetVector("VMGROUP")
+
 			if err == nil {
+
 				vmGroupPair, err := vmGroupVector.GetPair("VMGROUP_ID")
+
 				if err == nil {
 					vmGroupName = s.getVMGroupById(vmGroupPair.Value)
 				}
@@ -208,7 +252,7 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 			if err == nil && s.vms[newId] == nil {
 				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vmGroupName, VMTemplateId: t.ID, InstantiationTimestamp: time.Now()}
 			} else {
-				fmt.Println(err)
+				log.Println(ErrorSkipTemplateDuringInitialStart, t.ID, " - ", t.Name, " ", err.Error())
 			}
 		}
 	}
@@ -324,14 +368,14 @@ func (s *Scheduler) getVMGroupById(id string) string {
 	return vmGroupName
 }
 
-func (s *Scheduler) getQtOfVMsByTemplateId(templateId int) (int, error) {
-
+// Get quantity of non-poweroff VMs
+func (s *Scheduler) getQtOfVMs() (int, error) {
 	counter := 0
 
 	vms, err := s.onController.VMs().Info(-2)
 
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 
 	for _, ivm := range vms.VMs {
@@ -340,6 +384,44 @@ func (s *Scheduler) getQtOfVMsByTemplateId(templateId int) (int, error) {
 		vmInfo, err := s.onController.VM(ivm.ID).Info(false)
 
 		if err != nil {
+			log.Println(ErrorSkipVmQt.Error(), err.Error())
+			continue
+		}
+
+		vmState, _, err := vmInfo.State()
+
+		if err != nil {
+			log.Println(ErrorSkipVmQt.Error(), err.Error())
+			continue
+		}
+
+		if vmState.String() != "POWEROFF" {
+			counter += 1
+		}
+
+	}
+
+	return counter, nil
+}
+
+// Get quantity of non-poweroff VMs instantiated from a certain template ID
+func (s *Scheduler) getQtOfVMsByTemplateId(templateId int) (int, error) {
+
+	counter := 0
+
+	vms, err := s.onController.VMs().Info(-2)
+
+	if err != nil {
+		return 0, err
+	}
+
+	for _, ivm := range vms.VMs {
+
+		// Retrieve all data
+		vmInfo, err := s.onController.VM(ivm.ID).Info(false)
+
+		if err != nil {
+			log.Println(ErrorSkipVmQtByTemplate.Error(), err.Error())
 			continue
 		}
 
@@ -350,16 +432,25 @@ func (s *Scheduler) getQtOfVMsByTemplateId(templateId int) (int, error) {
 		templateIdPair, err := vmTemplate.GetPair("TEMPLATE_ID")
 
 		if err != nil {
+			log.Println(ErrorSkipVmQtByTemplate.Error(), err.Error())
 			continue
 		}
 
 		vmTemplateId, err := strconv.Atoi(templateIdPair.Value)
 
 		if err != nil {
+			log.Println(ErrorSkipVmQtByTemplate.Error(), err.Error())
 			continue
 		}
 
-		if vmTemplateId == templateId {
+		vmState, _, err := vmInfo.State()
+
+		if err != nil {
+			log.Println(ErrorSkipVmQtByTemplate.Error(), err.Error())
+			continue
+		}
+
+		if vmTemplateId == templateId && vmState.String() != "POWEROFF" {
 			counter += 1
 		}
 
@@ -382,10 +473,25 @@ func (s *Scheduler) updateVmMap() error {
 
 	for _, ivm := range vms.VMs {
 
+		vmState, _, err := ivm.State()
+
+		if err != nil || vmState.String() == "POWEROFF" {
+			// Ignore powered off VMs
+			if err != nil {
+				log.Println(ErrorSkipUpdateInternalVMMap, err.Error())
+			} else {
+				// If err was nil, this means the VM is registered as powered off therefore should be removed
+				delete(s.vms, ivm.ID)
+			}
+
+			continue
+		}
+
 		// Retrieve all data
 		vmInfo, err := s.onController.VM(ivm.ID).Info(false)
 
 		if err != nil {
+			log.Println(ErrorSkipUpdateInternalVMMap, "VM ", ivm.ID, " - ", ivm.Name, " ", err.Error())
 			continue
 		}
 
@@ -446,12 +552,14 @@ func (s *Scheduler) updateVmMap() error {
 		templateIdPair, err := vmTemplate.GetPair("TEMPLATE_ID")
 
 		if err != nil {
+			log.Println(ErrorSkipUpdateInternalVMMap, "VM ", ivm.ID, " - ", ivm.Name, " ", err.Error())
 			continue
 		}
 
 		templateId, err := strconv.Atoi(templateIdPair.Value)
 
 		if err != nil {
+			log.Println(ErrorSkipUpdateInternalVMMap, "VM ", ivm.ID, " - ", ivm.Name, " ", err.Error())
 			continue
 		}
 
@@ -576,13 +684,21 @@ func (s *Scheduler) checkAndSchedule() error {
 
 	for _, vm := range s.vms {
 
-		if vm.AvailableMem <= s.freeMemoryThreshold.Get() || vm.AvailableCPU <= s.freeCPUThreshold.Get() {
+		currentVMQt, err := s.getQtOfVMs()
+
+		if err != nil {
+			log.Println(ErrorGetVmQt.Error(), err.Error())
+			continue
+		}
+
+		if (vm.AvailableMem <= s.freeMemoryThreshold.Get() || vm.AvailableCPU <= s.freeCPUThreshold.Get()) && (currentVMQt < s.maxVMsQt.Get()) {
 
 			templateId := vm.VMTemplateId
 
 			newId, err := s.instantiateVMByTemplateId(templateId, vm.VMGroupName)
 
 			if err != nil {
+				log.Println(ErrorVmInstantiation.Error(), err.Error())
 				continue
 			}
 
@@ -619,6 +735,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 		vmQt, err := s.getQtOfVMsByTemplateId(vm.VMTemplateId)
 
 		if err != nil {
+			log.Println(ErrorSkipVMUnscheduling.Error(), "VM: ", vm.Id, " ", err.Error())
 			continue
 		}
 
@@ -626,12 +743,14 @@ func (s *Scheduler) checkAndUnschedule() error {
 		vmInfo, err := s.onController.VM(vm.Id).Info(true)
 
 		if err != nil {
+			log.Println(ErrorSkipVMUnscheduling.Error(), "VM: ", vm.Id, " ", err.Error())
 			continue
 		}
 
 		_, vmState, err := vmInfo.State()
 
 		if err != nil {
+			log.Println(ErrorSkipVMUnscheduling.Error(), "VM: ", vm.Id, " ", err.Error())
 			continue
 		}
 
@@ -650,6 +769,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 			)
 
 			if err != nil {
+				log.Println(ErrorSkipVMUnscheduling.Error(), "VM: ", vm.Id, " ", err.Error())
 				continue
 			}
 
@@ -681,6 +801,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 			)
 
 			if err != nil {
+				log.Println(ErrorSkipVMUnscheduling.Error(), "VM: ", vm.Id, " ", err.Error())
 				continue
 			}
 
