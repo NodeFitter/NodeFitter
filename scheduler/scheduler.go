@@ -479,6 +479,9 @@ func (s *Scheduler) updateVmMap() error {
 			// Ignore powered off VMs
 			if err != nil {
 				log.Println(ErrorSkipUpdateInternalVMMap, err.Error())
+			} else {
+				// If err was nil, this means the VM is registered as powered off therefore should be removed
+				delete(s.vms, ivm.ID)
 			}
 
 			continue
