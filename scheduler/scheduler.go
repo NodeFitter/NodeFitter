@@ -44,6 +44,8 @@ var (
 	ErrorReadingResourcesScriptFile  = errors.New("error while reading the resources script file. More details: ")
 	ErrorVmInstantiation             = errors.New("error while instantiating a new VM. More details: ")
 	ErrorGetVmQt                     = errors.New("error while getting quantity of VMs not in POWEROFF state. More details: ")
+	ErrorNodeCordoning               = errors.New("error while cordoning node. More details: ")
+	ErrorNodeDraining                = errors.New("error while draining node. More details: ")
 
 	ErrorSkipTemplateDuringInitialStart = errors.New("skipping initial instantiation. More details: ")
 	ErrorSkipVmQt                       = errors.New("skipping reading VM quantity. More details: ")
@@ -818,13 +820,23 @@ func (s *Scheduler) checkAndUnschedule() error {
 				IgnoreAllDaemonSets: true,
 				DeleteEmptyDirData:  true,
 				Timeout:             0,
+				ErrOut:              os.Stderr,
+				Out:                 os.Stdout,
 			}
 
 			// Cordon the node (prevents new scheduling of pods)
-			drain.RunCordonOrUncordon(helper, node, true)
+			err = drain.RunCordonOrUncordon(helper, node, true)
+
+			if err != nil {
+				log.Println(ErrorNodeCordoning.Error(), err.Error())
+			}
 
 			// Drain the node from its pods
-			drain.RunNodeDrain(helper, vmNodeName)
+			err = drain.RunNodeDrain(helper, vmNodeName)
+
+			if err != nil {
+				log.Println(ErrorNodeDraining.Error(), err.Error())
+			}
 
 			// Delete the node
 			s.k8Client.CoreV1().Nodes().Delete(
@@ -832,6 +844,8 @@ func (s *Scheduler) checkAndUnschedule() error {
 				vmNodeName,
 				metav1.DeleteOptions{},
 			)
+
+			delete(s.vms, vm.Id)
 
 		}
 
