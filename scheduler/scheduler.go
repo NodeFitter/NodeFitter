@@ -32,26 +32,26 @@ var (
 )
 
 var (
-	ErrorNoInitializedConfig         = errors.New("error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
-	ErrorConfigNotValid              = errors.New("error while reading the configuration file: a not valid data has been read")
-	ErrorInitialInstantiationFailure = errors.New("error while performing initial VM instantiation")
-	ErrorCACertPemDecoding           = errors.New("error while decoding PEM of kubernetes certificate")
-	ErrorSchedulerAlreadyActive      = errors.New("error while starting the scheduler process: the scheduler is already active")
-	ErrorSchedulerNotActive          = errors.New("error while stopping the scheduler process: the scheduler is not active")
-	ErrorValueNotValid               = errors.New("error while setting the new value: not a valid value")
-	ErrorOpenNebulaConnection        = errors.New("error while connecting to OpenNebula. More details: ")
-	ErrorKubernetesConnection        = errors.New("error while connecting to Kubernetes control plane. More details: ")
-	ErrorReadingResourcesScriptFile  = errors.New("error while reading the resources script file. More details: ")
-	ErrorVmInstantiation             = errors.New("error while instantiating a new VM. More details: ")
-	ErrorGetVmQt                     = errors.New("error while getting quantity of VMs not in POWEROFF state. More details: ")
-	ErrorNodeCordoning               = errors.New("error while cordoning node. More details: ")
-	ErrorNodeDraining                = errors.New("error while draining node. More details: ")
+	ErrorNoInitializedConfig         = errors.New("[ERROR] error while communicating with OpenNebula: connection has not been initialized. Check configuration or Start method")
+	ErrorConfigNotValid              = errors.New("[ERROR] error while reading the configuration file: a not valid data has been read")
+	ErrorInitialInstantiationFailure = errors.New("[ERROR] error while performing initial VM instantiation")
+	ErrorCACertPemDecoding           = errors.New("[ERROR] error while decoding PEM of kubernetes certificate")
+	ErrorSchedulerAlreadyActive      = errors.New("[ERROR] error while starting the scheduler process: the scheduler is already active")
+	ErrorSchedulerNotActive          = errors.New("[ERROR] error while stopping the scheduler process: the scheduler is not active")
+	ErrorValueNotValid               = errors.New("[ERROR] error while setting the new value: not a valid value")
+	ErrorOpenNebulaConnection        = errors.New("[ERROR] error while connecting to OpenNebula. More details: ")
+	ErrorKubernetesConnection        = errors.New("[ERROR] error while connecting to Kubernetes control plane. More details: ")
+	ErrorReadingResourcesScriptFile  = errors.New("[ERROR] error while reading the resources script file. More details: ")
+	ErrorVmInstantiation             = errors.New("[ERROR] error while instantiating a new VM. More details: ")
+	ErrorGetVmQt                     = errors.New("[ERROR] error while getting quantity of VMs not in POWEROFF state. More details: ")
+	ErrorNodeCordoning               = errors.New("[ERROR] error while cordoning node. More details: ")
+	ErrorNodeDraining                = errors.New("[ERROR] error while draining node. More details: ")
 
-	ErrorSkipTemplateDuringInitialStart = errors.New("skipping initial instantiation. More details: ")
-	ErrorSkipVmQt                       = errors.New("skipping reading VM quantity. More details: ")
-	ErrorSkipVmQtByTemplate             = errors.New("skipping reading VM quantity by template ID. More details: ")
-	ErrorSkipUpdateInternalVMMap        = errors.New("skipping internal VM map update for a VM. More details: ")
-	ErrorSkipVMUnscheduling             = errors.New("skipping unscheduling of a VM. More details: ")
+	ErrorSkipTemplateDuringInitialStart = errors.New("[WARNING] skipping initial instantiation for one of the templates. More details: ")
+	ErrorSkipVmQt                       = errors.New("[WARNING] skipping reading VM quantity. More details: ")
+	ErrorSkipVmQtByTemplate             = errors.New("[WARNING] skipping reading VM quantity by template ID. More details: ")
+	ErrorSkipUpdateInternalVMMap        = errors.New("[WARNING] skipping internal VM map update for a VM. More details: ")
+	ErrorSkipVMUnscheduling             = errors.New("[WARNING] skipping unscheduling of a VM. More details: ")
 )
 
 type Node struct {
@@ -264,9 +264,9 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 		}
 	}
 
-	s.hasBeenStarted = true
+	s.updateVmMap(true)
 
-	s.updateVmMap()
+	s.hasBeenStarted = true
 
 	s.StartScheduleProcess()
 
@@ -468,9 +468,9 @@ func (s *Scheduler) getQtOfVMsByTemplateId(templateId int) (int, error) {
 	return counter, nil
 }
 
-func (s *Scheduler) updateVmMap() error {
+func (s *Scheduler) updateVmMap(ignoreStartCheck bool) error {
 
-	if !s.hasBeenStarted {
+	if !s.hasBeenStarted && !ignoreStartCheck {
 		return ErrorNoInitializedConfig
 	}
 
@@ -599,6 +599,7 @@ func (s *Scheduler) startScheduleProcess() {
 	s.ticker = time.NewTicker(time.Duration(s.interval) * time.Second)
 
 	for range s.ticker.C {
+		log.Println("[SCHEDULER] starting cycle of scheduling and unscheduling")
 		s.checkAndSchedule()
 	}
 
@@ -607,6 +608,7 @@ func (s *Scheduler) startScheduleProcess() {
 func (s *Scheduler) StopScheduleProcess() error {
 
 	if s.ticker != nil {
+		log.Println("[SCHEDULER] scheduling and unscheduling cycle will stop after the current cycle will end")
 		s.ticker.Stop()
 	} else {
 		return ErrorSchedulerNotActive
@@ -688,7 +690,7 @@ nodeRegistration:
 func (s *Scheduler) checkAndSchedule() error {
 
 	// Update vm map
-	s.updateVmMap()
+	s.updateVmMap(false)
 
 	for _, vm := range s.vms {
 
@@ -715,6 +717,8 @@ func (s *Scheduler) checkAndSchedule() error {
 			if s.vms[newId] == nil {
 				s.vms[newId] = &Node{Id: newId, AvailableMem: math.MaxFloat64, AvailableCPU: math.MaxFloat32, VMGroupName: vm.VMGroupName, VMTemplateId: vm.VMTemplateId, InstantiationTimestamp: time.Now()}
 			}
+
+			log.Println("[SCHEDULER] scheduled a new VM: ", newId, " for VM group ", vm.VMGroupName)
 		}
 	}
 
@@ -727,7 +731,7 @@ func (s *Scheduler) checkAndSchedule() error {
 func (s *Scheduler) checkAndUnschedule() error {
 
 	// Update vm map
-	s.updateVmMap()
+	s.updateVmMap(false)
 
 	// Recover all pods
 	podsMap := make(map[string]*corev1.PodList)
@@ -764,6 +768,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 
 		if time.Since(vm.InstantiationTimestamp) < time.Duration(s.preserveVMTimeout)*time.Second || vmQt <= 1 || vmState.String() != "RUNNING" {
 			// Ignore the VM if it had been instantiated less than preserveVMTimeout seconds ago, if it is the only vm of such type or if the vm is in a state different from running (LCMState set at 3, RUNNING)
+			log.Println(ErrorSkipVMUnscheduling.Error(), " timestamp safeguard active, quantity of VMs for template ", vm.VMTemplateId, " or VM state not RUNNING")
 			continue
 		}
 
@@ -796,8 +801,6 @@ func (s *Scheduler) checkAndUnschedule() error {
 				counter += 1
 			}
 		}
-
-		log.Println(vm.Id, ":", "counter ", counter)
 
 		if counter == 0 {
 			// If no pods have been found, delete the VM
@@ -847,6 +850,8 @@ func (s *Scheduler) checkAndUnschedule() error {
 				vmNodeName,
 				metav1.DeleteOptions{},
 			)
+
+			log.Println("[SCHEDULER] unscheduled a VM: ", vm.Id, " of VM group ", vm.VMGroupName)
 
 			delete(s.vms, vm.Id)
 
