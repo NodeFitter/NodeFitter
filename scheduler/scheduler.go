@@ -533,7 +533,7 @@ func (s *Scheduler) updateVmMap() error {
 		}
 
 		if s.vms[ivm.ID] == nil {
-			s.vms[ivm.ID] = &Node{Id: ivm.ID}
+			s.vms[ivm.ID] = &Node{Id: ivm.ID, InstantiationTimestamp: time.Now()}
 		}
 
 		// Set vm list for mem
@@ -571,7 +571,6 @@ func (s *Scheduler) updateVmMap() error {
 		}
 
 		s.vms[ivm.ID].VMTemplateId = templateId
-		s.vms[ivm.ID].InstantiationTimestamp = time.Now()
 	}
 
 	return nil
