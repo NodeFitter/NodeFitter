@@ -236,6 +236,11 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 		if qt == 0 && currentVMQt < s.maxVMsQt.Get() {
 			newId, err := s.instantiateVMByTemplateId(t.ID, t.Name)
 
+			if err != nil {
+				log.Println(ErrorSkipTemplateDuringInitialStart, t.ID, " - ", t.Name, " ", err.Error())
+				continue
+			}
+
 			vmGroupName := ""
 
 			vmGroupVector, err := t.Template.GetVector("VMGROUP")
@@ -259,7 +264,9 @@ func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
 
 	s.hasBeenStarted = true
 
-	//s.StartScheduleProcess()
+	s.updateVmMap()
+
+	s.StartScheduleProcess()
 
 	return nil
 }
@@ -395,7 +402,7 @@ func (s *Scheduler) getQtOfVMs() (int, error) {
 			continue
 		}
 
-		if vmState.String() != "POWEROFF" {
+		if vmState.String() != "POWEROFF" && vmState.String() != "UNDEPLOYED" {
 			counter += 1
 		}
 
