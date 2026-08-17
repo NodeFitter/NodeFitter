@@ -797,6 +797,8 @@ func (s *Scheduler) checkAndUnschedule() error {
 			}
 		}
 
+		log.Println(vm.Id, ":", "counter ", counter)
+
 		if counter == 0 {
 			// If no pods have been found, delete the VM
 			s.onController.VM(vm.Id).TerminateHard()
@@ -822,6 +824,7 @@ func (s *Scheduler) checkAndUnschedule() error {
 				Timeout:             0,
 				ErrOut:              os.Stderr,
 				Out:                 os.Stdout,
+				Ctx:                 sysContext.Background(),
 			}
 
 			// Cordon the node (prevents new scheduling of pods)
