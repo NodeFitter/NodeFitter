@@ -38,8 +38,14 @@ func main() {
 	var c ca.Icontroller = controller.NewController(a.ControllerContext, b)
 
 	log.Println("[*] Starting RPC server...")
+	socket := os.Getenv("NODEFITTER_SOCKET")
+	if socket == "" {
+		socket = "/run/nodefitter/NodeFitter.sock"
+	}
+
 	if err := controller.Serve(
-		a.ControllerContext.Socket,
+		// a.ControllerContext.Socket,
+		socket,
 		c,
 	); err != nil {
 		log.Fatal(err)
