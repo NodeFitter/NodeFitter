@@ -12,17 +12,23 @@
 </div>
 
 ## About this project
+<div align="center">
+<img src="./assets/img/arch(itecture).png" width="75%">
+</div>
 
 NodeFitter is a simple VM autoscaler created for the "Fog and Cloud Computing" course at <a href="https://www.unitn.it/it">University of Trento</a>, Italy.
 
-The goal was to create a VM autoscaler capable to automatically deploy VMs and make them join a Kubernetes cluster for it to be able to schedule pods.
+NodeFitter is capable of automatically scale VMs running on OpenNebula. Specifically, the scaler automatically spawn one VM per template upon startup, then continues to check the internal VM memory and CPU consumption.
+
+When the free memory or the CPU is under a configurable threshold, NodeFitter automatically creates a new VM of the same type and automatically makes the VM join the Kubernetes cluster.
+
+The script used to obtain information about memory and CPU consumption is uploaded to the new VM, meaning that it is completely configurable. As for the Kubernetes auto-join functionality, NodeFitter automatically generate a 10-minute token and register it with the control plane.
 
 ## Installation instructions
 
-To setup Docker and Kubernetes, as well the necessary OpenNebula templates and golden images, take a look to the [appropriate README](VMsConfig/README.md).
+To setup Docker and Kubernetes, as well the necessary OpenNebula templates and golden images, it is sufficient to follow the instructions reported in the [appropriate README](VMsConfig/README.md) under the <a href="./VMsConfig/">VMsConfig folder</a>.
 
 ## Configuration instruction
-
 
 ## Usage instructions
 
