@@ -46,7 +46,7 @@ docker compose -f compose.yml up
 
 Docker will automatically build and start the autoscaler, along with the setup of the Unix socket to allow connection with the [ScalerCtl](github.com/NodeFitter/ScalerCtl).
 
-## Configuration instruction
+## Configuration instructions
 
 > [!IMPORTANT]
 > Before setting up the NodeFitter autoscaler be sure to have ALREADY set up OpenNebula's templates and VM groups. Additionally, an active control plane must already exist. For more information, read the [appropriate README](./VMsConfig/README.md)
