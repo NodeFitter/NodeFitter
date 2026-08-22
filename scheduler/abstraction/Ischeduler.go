@@ -15,5 +15,5 @@ type Ischeduler interface {
 	StopScheduleProcess() error          // Stop the scheduling process, if active
 	GetVMs() []scheduler.Node
 	GetCurrentMemoryThreshold() (float64, error)
-	GetCurrentCPUThresgold() (float32, error)
+	GetCurrentCPUThreshold() (float32, error)
 }

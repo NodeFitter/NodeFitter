@@ -153,7 +153,7 @@ func (s *Scheduler) GetCurrentMemoryThreshold() (float64, error) {
 	return s.freeMemoryThreshold.Get(), nil
 }
 
-func (s *Scheduler) GetCurrentCPUThresgold() (float32, error) {
+func (s *Scheduler) GetCurrentCPUThreshold() (float32, error) {
 	if !s.hasBeenStarted {
 		return 0, ErrorNoInitializedConfig
 	}

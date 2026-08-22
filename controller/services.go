@@ -10,6 +10,42 @@ import (
 This file contains the controller functions called via rpc
 */
 
+func (c *Controller) GetMemThreshold(args *comms.EmptyArgs, reply *comms.GetMemThresholdReply) error {
+	log.Println("[CLI] Received a VM memory threshold getter request")
+
+	value, err := c.scheduler.GetCurrentMemoryThreshold()
+
+	if err != nil {
+		log.Printf("[CLI] Memory getter request failed: %s\n", err)
+		reply.Error = true
+		reply.Threshold = 0
+		return err
+	}
+
+	reply.Error = false
+	reply.Threshold = value
+
+	return nil
+}
+
+func (c *Controller) GetCPUThreshold(args *comms.EmptyArgs, reply *comms.GetCPUThresholdReply) error {
+	log.Println("[CLI] Received a VM CPU threshold getter request")
+
+	value, err := c.scheduler.GetCurrentCPUThreshold()
+
+	if err != nil {
+		log.Printf("[CLI] CPU getter request failed: %s\n", err)
+		reply.Error = true
+		reply.Threshold = 0
+		return err
+	}
+
+	reply.Error = false
+	reply.Threshold = value
+
+	return nil
+}
+
 func (c *Controller) UpdateMemThreshold(
 	args *comms.UpdateMemThresholdArgs,
 	reply *comms.UpdateMemThresholdReply,

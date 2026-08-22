@@ -32,5 +32,17 @@ type PrintVMReply struct {
 	VMs []scheduler.Node
 }
 
+// Get current CPU threshold
+type GetCPUThresholdReply struct {
+	Error     bool
+	Threshold float32
+}
+
+// Get current Memory threshold
+type GetMemThresholdReply struct {
+	Error     bool
+	Threshold float64
+}
+
 type EmptyArgs struct{}
 type EmptyReply struct{}
