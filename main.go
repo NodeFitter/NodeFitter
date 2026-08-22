@@ -25,15 +25,11 @@ func main() {
 
 	var b sa.Ischeduler = &scheduler.Scheduler{} // import sa "github.com/NodeFitter/NodeFitter/scheduler/abstraction"
 
-	//var c ca.Icontroller = &controller.Controller{} // import ca "github.com/NodeFitter/NodeFitter/controller/abstraction"
-
 	log.Println("[*] Starting scheduler...")
 	err := b.Start(a.SchedulerContext)
 	if err != nil {
 		log.Printf("[ERROR] %s\n", err)
 	}
-
-	b.GetVMs()
 
 	var c ca.Icontroller = controller.NewController(a.ControllerContext, b)
 

@@ -52,6 +52,8 @@ var (
 	ErrorSkipVmQtByTemplate             = errors.New("[WARNING] skipping reading VM quantity by template ID. More details: ")
 	ErrorSkipUpdateInternalVMMap        = errors.New("[WARNING] skipping internal VM map update for a VM. More details: ")
 	ErrorSkipVMUnscheduling             = errors.New("[WARNING] skipping unscheduling of a VM. More details: ")
+
+	ErrorDeleteVMFromInternalList = errors.New("[WARNING] removing a vm from internal list due to missing presence in more up-to-date OpenNebula list. VM ")
 )
 
 type Node struct {
@@ -141,6 +143,22 @@ func (s *Scheduler) UpdateKubernetesCASHA(CApath string) error {
 	s.kubernetesCASHA = caSHA
 
 	return nil
+}
+
+func (s *Scheduler) GetCurrentMemoryThreshold() (float64, error) {
+	if !s.hasBeenStarted {
+		return 0, ErrorNoInitializedConfig
+	}
+
+	return s.freeMemoryThreshold.Get(), nil
+}
+
+func (s *Scheduler) GetCurrentCPUThresgold() (float32, error) {
+	if !s.hasBeenStarted {
+		return 0, ErrorNoInitializedConfig
+	}
+
+	return s.freeCPUThreshold.Get(), nil
 }
 
 func (s *Scheduler) Start(ctx context.SchedulerConfig) error {
@@ -480,7 +498,11 @@ func (s *Scheduler) updateVmMap(ignoreStartCheck bool) error {
 		return err
 	}
 
+	recoveredVMs := make(map[int]bool)
+
 	for _, ivm := range vms.VMs {
+
+		recoveredVMs[ivm.ID] = true
 
 		vmState, _, err := ivm.State()
 
@@ -573,6 +595,17 @@ func (s *Scheduler) updateVmMap(ignoreStartCheck bool) error {
 		}
 
 		s.vms[ivm.ID].VMTemplateId = templateId
+	}
+
+	// Remove all not-detected VMs previously memorized
+
+	for _, vm := range s.vms {
+		// If the VM in the scaler was not encountered in the list of all VMs just recovered from OpenNebula, delete such VM
+		if !recoveredVMs[vm.Id] {
+			// If the VM was present, recoveredVMs[vm.Id] is true, therefore the if is false. If it was not present, if is executed
+			log.Println(ErrorDeleteVMFromInternalList.Error(), vm.Id)
+			delete(s.vms, vm.Id)
+		}
 	}
 
 	return nil

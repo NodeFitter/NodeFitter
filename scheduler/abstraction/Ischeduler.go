@@ -14,4 +14,6 @@ type Ischeduler interface {
 	StartScheduleProcess() error         // Start the scheduling process. Return an error if Start has not been invoked
 	StopScheduleProcess() error          // Stop the scheduling process, if active
 	GetVMs() []scheduler.Node
+	GetCurrentMemoryThreshold() (float64, error)
+	GetCurrentCPUThresgold() (float32, error)
 }
