@@ -170,7 +170,7 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
 
 ### Creation of the Golden Image
   - Go to `Instances > VMs` and create a new VM using one of the two just created templates
-  - Wait for the VM to complete the startup process, connect to the VM via ssh (`onevm shh <vm-id>`), install:
+  - Wait for the VM to complete the startup process, connect to the VM via ssh (`onevm ssh <vm-id>`), install:
     - **Containerd**: 
     ```sh           
     sudo apt install containerd
