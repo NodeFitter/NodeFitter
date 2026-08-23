@@ -51,6 +51,7 @@ var (
 	ErrorSkipVmQt                       = errors.New("[WARNING] skipping reading VM quantity. More details: ")
 	ErrorSkipVmQtByTemplate             = errors.New("[WARNING] skipping reading VM quantity by template ID. More details: ")
 	ErrorSkipUpdateInternalVMMap        = errors.New("[WARNING] skipping internal VM map update for a VM. More details: ")
+	ErrorSkipVMScheduling               = errors.New("[WARNING] skipping scheduling of a VM. More details: ")
 	ErrorSkipVMUnscheduling             = errors.New("[WARNING] skipping unscheduling of a VM. More details: ")
 
 	ErrorDeleteVMFromInternalList = errors.New("[WARNING] removing a vm from internal list due to missing presence in more up-to-date OpenNebula list. VM ")
@@ -731,6 +732,12 @@ func (s *Scheduler) checkAndSchedule() error {
 
 		if err != nil {
 			log.Println(ErrorGetVmQt.Error(), err.Error())
+			continue
+		}
+
+		if time.Since(vm.InstantiationTimestamp) < time.Duration(s.preserveVMTimeout)*time.Second {
+			// Skip VM check if safeguard is active
+			log.Println(ErrorSkipVMScheduling.Error(), "timestamp safeguard active")
 			continue
 		}
 
