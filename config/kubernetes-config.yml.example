@@ -1,5 +1,7 @@
 # A copy of the needed config can be found under .kube/config or /etc/kubernetes/admin.conf in the control plane node
 
+# For the demo, this will be mounted via Docker Compose so need to copy it
+
 apiVersion: v1
 clusters:
 - cluster:
