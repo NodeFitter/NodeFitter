@@ -25,14 +25,17 @@ OpenNebula's monitoring data include information about the hypervisor, therefore
 > To make the change permanent modify the `/etc/fstab` file by commenting out the swap.img line.
 
 - Install Docker as described here: https://docs.docker.com/engine/install/ubuntu/
-- Install K8 as described here: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
 - Regenerate the configuration file of containerd (otherwise `kubeadm init` will fail due to incompatible CRI configuration, specifically, a disabled plugin):
 	```sh
     sudo containerd config default | sudo tee /etc/containerd/config.toml
 
     # Enable containerd to use systemd to manage cgroups (optional)
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+    # Restart containers
+    sudo systemctl restart containerd
     ```
+- Install Kubernetes as described here: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
 - Run the following command to initialize the control plane:
     ```sh
     sudo kubeadm init
@@ -98,7 +101,7 @@ The default validity of the token given by ```kubeadm``` is 24 hours.
 > ```sh
 > echo "nameserver 8.8.8.8" >> /etc/resolv.conf
 > ```
-> This guide will include both commands in the startup script.
+> **This guide will include both commands in the startup script.**
 
 > [!TIP]
 > This guide will configure Ubuntu VMs, although unofficial support for Alpine Linux exists (refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s). Using Alpine Linux instead of Ubuntu will require changes to the resources retrieval script and to the `Docker` and `Kubernetes` installations.
@@ -173,9 +176,14 @@ The default validity of the token given by ```kubeadm``` is 24 hours.
 ### Creation of the Golden Image
   - Go to `Instances > VMs` and create a new VM using one of the two just created templates
   - Wait for the VM to complete the startup process, connect to the VM via ssh (`onevm ssh <vm-id>`), install:
+    - **Docker**: https://docs.docker.com/engine/install/ubuntu/
     - **Containerd**: 
-    ```sh           
+    ```sh       
+    sudo apt update
+
     sudo apt install containerd
+
+    sudo mkdir /etc/containerd
     ```
     and generate and install the default configuration:
     ```sh
@@ -183,9 +191,10 @@ The default validity of the token given by ```kubeadm``` is 24 hours.
 
     # Enable containerd to use systemd to manage cgroups (optional)
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+    # Restart containers
+    sudo systemctl restart containerd
     ```
-  - Install:
-    - **Docker**: https://docs.docker.com/engine/install/ubuntu/
     - **Kubernetes**: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
   - Shutdown the VM. Go to `Instances > VMs`, select the VM, got to the `Storage` tab, select `Save as`, name the Golden Image as `pingo`
 
@@ -206,8 +215,8 @@ In the machine where OpenNebula is installed:
 - Modify `guestconfig.conf` under `/var/lib/one/remotes/etc/im/kvm-probes.d/`:
   ```sh
   # Enable the monitoring
-  enable: true
-  # Add under command
+  enabled: true
+  # Add under commands
   :vm_qemu_meminfo_pid: one-$vm_id '{"execute":"guest-exec","arguments":{"path":"/bin/res_info","arg":[""],"capture-output":true}}' --timeout 5
   ```
 

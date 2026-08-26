@@ -1,10 +1,10 @@
 user: "on-username" # Username of OpenNebula user, needed to connect to OpenNebula via OpenNebula's APIs
 password: "on-password" # Password of OpenNebula user, needed to connect to OpenNebula via OpenNebula's APIs
 endpoint: "http://192.0.2.3:2633/RPC2" # OpenNebula's endpoint, needed to connect to OpenNebula via OpenNebula's APIs. :2633/RPC2 is MANDATORY
-res_script_path: "./VMsConfig/res_info.sh" # Path of the file (file included) needed to collect memory and CPU measurements that will be uploaded to every newly created VMs
+res_script_path: "./vms/res_info.sh" # Path of the file (file included) needed to collect memory and CPU measurements that will be uploaded to every newly created VMs
 
 kubernetes_config_path: "./config/kubernetes-config.yml" # Kubernetes configuration file. A copy of the needed config can be found under .kube/config or /etc/kubernetes/admin.conf in the control plane node
-kubernetes_ca_certificate_path: "./kubernetesCert/ca.crt" # Kubernetes CA file used during Kubernetes' join token creation. Certificate can be found under /etc/kubernetes/pki/ca.crt of control plane
+kubernetes_ca_certificate_path: "./certs/ca.crt" # Kubernetes CA file used during Kubernetes' join token creation. Certificate can be found under /etc/kubernetes/pki/ca.crt of control plane
 kubernetes_endpoint: 192.0.2.1:6443 # Address of Kubernetes. DO NOT USE localhost, as the same address will be used by the newly created VMs in order for them to contact the control plane and join the cluster. :6443 is MANDATORY
 
 free_ram_threshold: 100 # If a VMs tell a quantity of free memory UNDER OR EQUAL to the provided number, a new VM with the same template will be instantiated
