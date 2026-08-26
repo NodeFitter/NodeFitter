@@ -5,13 +5,13 @@
 OpenNebula's monitoring data include information about the hypervisor, therefore, the provided memory consumption includes measurements of both the VM AND the hypervisor. The only way to get memory information about VM memory consumption only is by pushing them from inside the VM. The following approach uses OpenNebula's OneGate: data will be visible under the VM's user template.
 
 > [!NOTE]
-> OneGate may not work if the appropriate token (which can be activated in the VM template) is not present. In case OpenNebula error during the installation of said token, it it possible to extract it from the CDROM context. Mount the CDROM and add token by adding these instruction to the context:
+> OneGate may not work if the appropriate token (which can be activated in the VM template) is not present. In case OpenNebula fails during the installation of said token, it is possible to extract it from the CDROM context. Mount the CDROM and add the token by adding these instructions to the context:
 >	```sh
 > mkdir -p /mnt/context
 >	mount /dev/sr0 /mnt/context
 >	export ONEGATE_TOKEN="$(cat /mnt/context/token.txt)
 > ```
-> Keep in mind that generally this is NOT needed if the OneGate token was turned on in the template since OpenNebula configure it automatically.
+> Keep in mind that generally this is NOT needed if the OneGate token was turned on in the template since OpenNebula configures it automatically.
 
 ## Creation of the Kubernetes cluster
 
@@ -24,24 +24,26 @@ OpenNebula's monitoring data include information about the hypervisor, therefore
 > ```
 > To make the change permanent modify the `/etc/fstab` file by commenting out the swap.img line.
 
-- Install Docker as described here https://docs.docker.com/engine/install/ubuntu/
-- Install K8 as described here https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
-- Regenerated config file of containerd (otherwise `kubeadm init` will fail due to incompatible CRI configuration, specifically, a disabled plugin) and enable containerd to use systemd to manage cgroups:
+- Install Docker as described here: https://docs.docker.com/engine/install/ubuntu/
+- Install K8 as described here: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+- Regenerate the configuration file of containerd (otherwise `kubeadm init` will fail due to incompatible CRI configuration, specifically, a disabled plugin):
 	```sh
     sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+    # Enable containerd to use systemd to manage cgroups (optional)
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
     ```
 - Run the following command to initialize the control plane:
     ```sh
     sudo kubeadm init
     ```
-- Run
+- Run:
     ```sh
     mkdir -p $HOME/.kube
     sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
     sudo chown $(id -u):$(id -g) $HOME/.kube/config
     ```
-- Install a CNI (for example, Calico. Control Plan VM ONLY):
+- Install a CNI (for example, Calico):
   ```sh 
   kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.1/manifests/calico.yaml
   ```
@@ -49,14 +51,14 @@ OpenNebula's monitoring data include information about the hypervisor, therefore
 > [!NOTE]
 > The autoscaler automatically inserts a valid `kubeadm join` command under context upon creating the new VM with a validity of 10 minutes. Created VMs will join the Kubernetes cluster automatically.
 
-To get a command with token to join the cluster, run:
+To get a command with a token to join the cluster, run:
 ```sh
 kubeadm token create --print-join-command
 ```
-Default validity of the data given by ```kubeadm``` is 24 hours.
+The default validity of the token given by ```kubeadm``` is 24 hours.
 
 > [!NOTE]
-> The scheduler will need the Kubernetes's Control Plane address to execute various operations such as token creation and node removal. To change the control plane serving address, follow these steps:
+> The scheduler will need the Kubernetes's control plane address to execute various operations such as token creation and node removal. To change the control plane serving address, follow these steps:
 > - Create a file with the new cluster configuration named `kubeadm-config.yaml`:
 >   ```yaml
 >     apiVersion: kubeadm.k8s.io/v1beta4
@@ -84,15 +86,15 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
 ## VM setup for the autoscaler
 
 > [!IMPORTANT]
-> The following guide will consider OpenNebula already installed and working. To install OpenNebula, you can read the [official guide](https://docs.opennebula.io/7.4/getting_started/install_opennebula/). It is also important to NOT have other kubernetes installations like `minikube` in the same system.
+> The following guide will consider OpenNebula already installed and working. To install OpenNebula, you can read the [official guide](https://docs.opennebula.io/7.4/getting_started/install_opennebula/). It is also important to NOT have other Kubernetes installations like `minikube` in the same system.
 
 > [!IMPORTANT]
-> Additionally, in order to assure automatic join to the cluster, ipv4 forwarding needs to be active. It can be activated by running:
+> Additionally, in order to ensure automatic join to the cluster, ipv4 forwarding needs to be active. It can be activated by running:
 > ```sh
 > sudo sysctl -w net.ipv4.ip_forward=1
 > ```
-> To make the change permanent, modify Kubernetes ip forwarding rules under the `/etc/sysctl.d` folder or run the command as part of the OpenNebula startup script
-> Additionally, if not already configured it is necessary to allow DNS domain translation manually by adding the following instruction to the startup script of the VM:
+> To make the change permanent, modify Kubernetes ip forwarding rules under the `/etc/sysctl.d` folder or run the command as part of the OpenNebula startup script.
+> Additionally, if not already configured, it is necessary to allow DNS domain translation manually by adding the following instruction to the startup script of the VM:
 > ```sh
 > echo "nameserver 8.8.8.8" >> /etc/resolv.conf
 > ```
@@ -102,14 +104,14 @@ Default validity of the data given by ```kubeadm``` is 24 hours.
 > This guide will configure Ubuntu VMs, although unofficial support for Alpine Linux exists (refer to https://wiki.alpinelinux.org/wiki/Docker and https://wiki.alpinelinux.org/wiki/K8s). Using Alpine Linux instead of Ubuntu will require changes to the resources retrieval script and to the `Docker` and `Kubernetes` installations.
 
 > [!TIP]
-> This guide will configure two templates, one for frontend and one for backend. The autoscaler will consider every template as a type of VM.
-> To keep consistency between Kubernetes namespaces and VMs, the label that will be attached to a new VM will be equal to the name of the VM group that VM is part of: in other words, a VM of a certain VM group should be able to host pods that are part of the same namespace which name is equal to the one of the VM group of such VM.
-> To easier the management of VMs, it is suggested to keep the name of VM groups and the name of VM templates the same.
+> This guide will configure two templates, one for the frontend and one for the backend. The autoscaler will consider every template as a type of VM.
+> To keep consistency between Kubernetes namespaces and VMs, the label that will be attached to a new VM will be equal to the name of the VM group that VM is part of: in other words, a VM of a certain VM group should be able to host pods that are part of the same namespace whose name is equal to the one of the VM group of such VM.
+> To ease the management of VMs, it is suggested to keep the name of VM groups and the name of VM templates the same.
 
 ### Initial setup
 - Login to OpenNebula
 - Go to `Storage > Marketplaces > OpenNebula Public`, search and download the `Ubuntu Minimal 24.04` image. Wait for the image to finish downloading
-- Go to `Templates > VM Groups`, create a new VM group by modifying the following parameters (leave anything else untouched or modify as you please):
+- Go to `Templates > VM Groups` and create a new VM group by modifying the following parameters (leave anything else untouched or modify as you please):
   - **Name**: `frontend` (under General)
   - **Role Name**: `frontend` (under `Role Details > Role Name`. If not already present, first press `Add role` to add a new role)
 - Go to `Templates > VM Groups`, create a new VM group by modifying the following parameters (leave anything else untouched or modify as you please):
@@ -214,4 +216,4 @@ In the machine where OpenNebula is installed:
   onehost sync --force
   ```
 
-This will cause OpenNebula to execute the resources retrieval script every time it updates its monitoring data using the `guest-exec` functionality of the QEMU guest agent. Additional information can be found in the [QEMU wiki of Guest Agent](https://wiki.qemu.org/Features/GuestAgent), while a list of possible parameters can be found [QEMU Guest Agent Index](https://www.qemu.org/docs/master/qapi-qga-index.html).
+This will cause OpenNebula to execute the resources retrieval script every time it updates its monitoring data using the `guest-exec` functionality of the QEMU guest agent. Additional information can be found in the [QEMU wiki of Guest Agent](https://wiki.qemu.org/Features/GuestAgent), while a list of possible parameters can be found on the [QEMU Guest Agent Index](https://www.qemu.org/docs/master/qapi-qga-index.html).

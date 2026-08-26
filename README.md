@@ -16,17 +16,20 @@
 <img src="./assets/img/arch(itecture).png" width="75%">
 </div>
 
-NodeFitter is a simple VM autoscaler created for the "Fog and Cloud Computing" course at <a href="https://www.unitn.it/it">University of Trento</a>, Italy.
+NodeFitter is a simple VM autoscaler created for the "Fog and Cloud Computing" course at the <a href="https://www.unitn.it/it">University of Trento</a>, Italy.
 
-NodeFitter is capable of automatically scale VMs running on OpenNebula. Specifically, the scaler automatically spawn one VM per template upon startup, then continues to check the internal VM memory and CPU consumption.
+NodeFitter is capable of automatically scaling VMs running on OpenNebula. Specifically, the scaler automatically spawns one VM per template upon startup, then continues to check the internal VM memory and CPU consumption.
 
 When the free memory or the CPU is under a configurable threshold, NodeFitter automatically creates a new VM of the same type and automatically makes the VM join the Kubernetes cluster.
 
-The script used to obtain information about memory and CPU consumption is uploaded to the new VM, meaning that it is completely configurable. As for the Kubernetes auto-join functionality, NodeFitter automatically generate a 10-minute token and register it with the control plane.
+The script used to obtain information about memory and CPU consumption is uploaded to the new VM, meaning that it is completely configurable. As for the Kubernetes auto-join functionality, NodeFitter automatically generates a 10-minute token and registers it with the control plane.
 
 ## Installation instructions
 
-To setup Docker and Kubernetes, as well the necessary OpenNebula templates and golden images, it is sufficient to follow the instructions reported in the [appropriate README](VMsConfig/README.md) under the <a href="./VMsConfig/">VMsConfig folder</a>.
+> [!IMPORTANT]
+> Before installing and setting up the NodeFitter autoscaler be sure to have ALREADY set up OpenNebula's templates and VM groups. Additionally, an active control plane must already exist. For more information, read the [appropriate README](./VMsConfig/README.md)
+
+To set up Docker and Kubernetes, as well as the necessary OpenNebula templates and golden images, it is sufficient to follow the instructions reported in the [appropriate README](VMsConfig/README.md) under the <a href="./VMsConfig/">VMsConfig folder</a>.
 
 As for the installation of the NodeFitter applications, a [`docker compose`](https://github.com/NodeFitter/Submission/blob/main/nodefitter/compose.yml) file, along with the appropriate [`dockerfile`](https://github.com/NodeFitter/Submission/blob/main/nodefitter/dockerfile) is available in the [`Submission` repository](https://github.com/NodeFitter/Submission). To run it, it is sufficient to clone the repository with:
 
@@ -48,9 +51,6 @@ Docker will automatically build and start the autoscaler, along with the setup o
 
 ## Configuration instructions
 
-> [!IMPORTANT]
-> Before setting up the NodeFitter autoscaler be sure to have ALREADY set up OpenNebula's templates and VM groups. Additionally, an active control plane must already exist. For more information, read the [appropriate README](./VMsConfig/README.md)
-
 NodeFitter needs some parameters configured in order to properly work. Specifically, NodeFitter will read the parameters in the file `schedulerConfig.yml`, placed under the [`config` folder](./config), which also contains some example.
 
 ```yaml
@@ -70,11 +70,11 @@ schedule_preserve_VM_timeout: 600 # How many seconds the scaler needs to preserv
 max_VM_qt: 3 # How many VMs can be currently present NOT in the POWEROFF or in the UNDEPLOYED state. In other words, if the scaler verifies that are currently present x >= max_VM_qt VMs NOT in POWEROFF or UNDEPLOYED state, the autoscaler will NOT create any new VMs
 ```
 
-As it is possible to read from the showed configuration file, it is necessary to also retrieve some Kubernetes-specific files. Example of such files can be found in the [`config` folder](./config) and the [kubernetesCert](./kubernetesCert/) folders.
+As it is possible to read from the shown configuration file, it is necessary to also retrieve some Kubernetes-specific files. Examples of such files can be found in the [`config` folder](./config) and the [kubernetesCert](./kubernetesCert/) folders.
 
 ## Usage instructions
 
-Once activated, no further interaction is needed: NodeFitter will automatically start to work according to the provided configuration. It is possible to start, stop and partially change the scaler configuration by using the cli. For additional information, read the [ScalerCtl README](https://github.com/NodeFitter/ScalerCtl/blob/main/README.md).
+Once activated, no further interaction is needed: NodeFitter will automatically start to work according to the provided configuration. It is possible to start, stop and partially change the scaler configuration by using the ctl. For additional information, read the [ScalerCtl README](https://github.com/NodeFitter/ScalerCtl/blob/main/README.md).
 
 ## Authors
 
